@@ -1,0 +1,23 @@
+{
+  "name": "@triage/db",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  },
+  "nx": {
+    "name": "db",
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "eslint .",
+          "cwd": "libs/db"
+        }
+      }
+    }
+  }
+}

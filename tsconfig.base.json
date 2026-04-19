@@ -16,6 +16,12 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@triage/source"]
+    "customConditions": ["@triage/source"],
+    "baseUrl": ".",
+    "paths": {
+      "@triage/shared-types": ["libs/shared-types/src/index.ts"],
+      "@triage/db": ["libs/db/src/index.ts"],
+      "@triage/api-client": ["libs/api-client/src/index.ts"]
+    }
   }
 }

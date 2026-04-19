@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  role          String    @default("agent")
+
+  sessions         Session[]
+  accounts         Account[]
+  comments         Comment[]
+  auditLogs        AuditLog[]
+  assignedFeedback Feedback[] @relation("AssignedFeedback")
+  notifications    Notification[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+enum FeedbackPriority {
+  low
+  med
+  high
+  urgent
+}
+
+enum FeedbackSentiment {
+  negative
+  neutral
+  positive
+}
+
+enum FeedbackStatus {
+  new
+  triaged
+  claimed
+  in_progress
+  resolved
+  rejected
+}
+
+model Feedback {
+  id              String             @id @default(cuid())
+  submitterEmail  String
+  rawText         String             @db.Text
+  cleanedText     String?            @db.Text
+  category        String?
+  priority        FeedbackPriority?
+  sentiment       FeedbackSentiment?
+  status          FeedbackStatus     @default(new)
+  isNoise         Boolean            @default(false)
+  knowledgeGap    Boolean            @default(false)
+  assignedAgentId String?
+  assignedAgent   User?              @relation("AssignedFeedback", fields: [assignedAgentId], references: [id])
+  createdAt       DateTime           @default(now())
+  triagedAt       DateTime?
+  resolvedAt      DateTime?
+
+  comments  Comment[]
+  auditLogs AuditLog[]
+
+  @@index([status, priority, createdAt])
+  @@index([assignedAgentId])
+  @@map("feedback")
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  feedbackId String
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([feedbackId])
+  @@map("feedback_comment")
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  actorId    String?
+  actor      User?     @relation(fields: [actorId], references: [id])
+  feedbackId String?
+  feedback   Feedback? @relation(fields: [feedbackId], references: [id], onDelete: SetNull)
+  action     String
+  before     Json?
+  after      Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([feedbackId])
+  @@map("audit_log")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String   @db.Text
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("notification")
+}
+
+model Tenant {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  industryPrompt String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("tenant")
+}
+
+model IntegrationConfig {
+  id        String   @id @default(cuid())
+  provider  String
+  tenantId  String?
+  config    Json
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_config")
+}

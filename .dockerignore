@@ -1,0 +1,32 @@
+# Dependencies & caches
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs (rebuilt in image)
+**/.next
+**/dist
+**/out-tsc
+**/.turbo
+
+# Nx
+.nx/cache
+
+# VCS & editor
+.git
+.gitignore
+**/.DS_Store
+.vscode
+.idea
+
+# Docs & misc (not needed to compile)
+**/*.md
+LICENSE
+
+# Local env
+.env
+.env.*
+
+# Test artifacts
+coverage
+**/jest.config.*.snap

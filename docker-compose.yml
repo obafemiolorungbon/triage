@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: triage
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/triage
+      REDIS_URL: redis://redis:6379
+      APP_URL: http://localhost:4200
+      API_PUBLIC_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: change-this-secret-at-least-32-characters-long
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL_FILTER: ${OPENROUTER_MODEL_FILTER:-openai/gpt-4o-mini}
+      OPENROUTER_MODEL_MAIN: ${OPENROUTER_MODEL_MAIN:-openai/gpt-4o}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/api/v1/health/ready', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    entrypoint: ['/entry.sh']
+    command: ['worker']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/triage
+      REDIS_URL: redis://redis:6379
+      APP_URL: http://localhost:4200
+      API_PUBLIC_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: change-this-secret-at-least-32-characters-long
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL_FILTER: ${OPENROUTER_MODEL_FILTER:-openai/gpt-4o-mini}
+      OPENROUTER_MODEL_MAIN: ${OPENROUTER_MODEL_MAIN:-openai/gpt-4o}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flux:
+    build:
+      context: .
+      dockerfile: apps/flux/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3000
+    ports:
+      - '4200:3000'
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      INTERNAL_API_URL: http://backend:3000
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata: {}

@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "dist/tsconfig.worker.tsbuildinfo"
+  },
+  "include": ["src/worker-bootstrap.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts"]
+}
