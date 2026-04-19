@@ -24,3 +24,12 @@ When creating the UI of the app, due to the skills added, the AI had halluciated
 ## Extras
 
 My Planning started from the drawing board, you can see my architectural thinking and decision in the /planning folder, which documents the questions and the reasons why i made the decisions that i made.
+
+
+## TODO
+
+Here are list of things I would implement if a complete product was a requirement.
+
+1. Notification via email: Currently, we have a third party integration to send emails for urgent triaged tickets and for when tickets are resolved. I will complete this end to end in a full product.
+
+2. Analytics: There will be analytics for better view of daily tickets and numbers required by agents.
