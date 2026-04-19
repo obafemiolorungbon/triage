@@ -79,12 +79,6 @@ export class TriageProcessor extends WorkerHost {
         priority: triage.priority,
       });
 
-      if (triage.priority === 'urgent') {
-        await this.notifications.postSlack(
-          `Urgent triaged feedback ${feedbackId}: ${triage.category}`,
-        );
-      }
-
       const admins = await this.prisma.client.user.findMany({
         where: { role: 'admin' },
       });

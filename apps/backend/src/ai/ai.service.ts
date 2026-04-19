@@ -12,7 +12,6 @@ import type { Env } from '../config/env.schema';
 import { spamPrompt, triagePrompt } from './prompts';
 
 export type TriageOptions = {
-  /** Tenant- or env-provided industry blurb inlined into the prompt. */
   industryContext?: string;
 };
 
@@ -35,8 +34,6 @@ async function withRetries<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
  */
 @Injectable()
 export class AiService {
-  private readonly log = new Logger(AiService.name);
-
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   isEnabled(): boolean {
@@ -52,7 +49,9 @@ export class AiService {
   }
 
   getIndustryContext(): string {
-    return this.config.get('OPENROUTER_INDUSTRY_CONTEXT', { infer: true }) ?? '';
+    return (
+      this.config.get('OPENROUTER_INDUSTRY_CONTEXT', { infer: true }) ?? ''
+    );
   }
 
   async classifySpam(text: string): Promise<NoiseFilterResult> {
