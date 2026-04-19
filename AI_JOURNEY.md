@@ -1,29 +1,26 @@
-# AI journey (Smart Triage)
+## 3 Complex Prompts 
 
-This document summarizes how AI coding assistants were used on this repository, per assessment expectations.
+1. Bootstrapping: In order to bootstrap the Nx workspace, I sent a prompt that was aware of the whole plan and bootstrapped the Nx Workspace in about 2-3 tries. 
 
-## 1. Three substantive prompts
+2. Design Change: After the first basic UI, I added multiple skills (from skills.sh) to the prompt and it resulted in a more polished consistent UI. skills include, frontend-design, ui-ux-pro-max and webdesign guidelines
 
-**A. Route alignment and status model**
+3. When Implementing the queue, i wrote an extensive prompt to ensure that two separate queues were created and also the workers can be viewd via bull mq visualizer.
 
-We asked to rename the public HTTP surface from `/feedback` to assessment-style `/tickets`, add `PATCH /tickets/:id` for status changes, and accept ticket intake shaped as `customer_email`, `description`, and optional `title` while still storing the existing Prisma `Feedback` row (mapping title + description into `rawText`). The assistant proposed a single `TicketsController`, Zod schemas in `libs/shared-types`, and a centralized `updateStatus` method that reuses the old claim/resolve rules for `claimed` and `resolved` while enforcing a smaller transition matrix for other statuses.
 
-**B. React Query + Kanban cache strategy**
+## AI Hallucination
 
-We asked to replace ad hoc `fetch` / `useEffect` data loading with TanStack Query and to add a Kanban view with drag-and-drop. The assistant structured a stable `QueryClientProvider` at the app root, list queries keyed by the full list query string (including filters and `pageSize` for Kanban), `useMutation` for `PATCH` with `onMutate` optimistic updates on the list cache, and `invalidateQueries` from the WebSocket `LiveSync` component so realtime events stay coherent with the client cache.
+When creating the UI of the app, due to the skills added, the AI had halluciated and added a landing page, and a whole lot of copies to the screens even when not required or explicitly required.Therefore, in the Rules section of cursor, I added an instruction to adhere to strict UI copies and not add unnecessary code.
 
-**C. @dnd-kit column board**
 
-We asked for `@dnd-kit/core` + `@dnd-kit/sortable` with daisyUI-styled columns. The assistant modeled each workflow column as a `useDroppable` with id `col:${status}`, cards as `useSortable` by ticket id, `closestCorners` collision detection, and drop resolution that maps `over.id` to either a column id or a peer card’s status so drops on cards behave like drops on that column.
+## Verification Task
 
-## 2. One bad suggestion and how it was corrected
+1. How would you implement RBAC if we added Admins and Read Only users?
+- I added a RBAC implementation from ground up since it is easier to add this before than after building, the current implmentation features a RBAC approach with agent and admin roles currently available.
 
-**Issue:** An earlier iteration introduced a separate `libs/ai-triage` package and mixed **Zod 4** (pulled in by newer `better-auth` / `better-call` peers) with **Vercel AI SDK / `@ai-sdk/*`**, which at the time expected **Zod 3**. Typecheck and installs failed with peer dependency conflicts, and generated code sometimes imported the wrong `z` instance for `generateObject` schemas.
+2. What happens to your system if the LLM API goes down? How did you design your API to handle this gracefully?
 
-**Fix:** We pinned **Zod 3.25.x** via `pnpm.overrides`, removed the standalone `ai-triage` library, and inlined the OpenRouter + `generateObject` pipeline in `apps/backend/src/triage/triage-llm.ts` next to the worker, keeping a small schema-focused spec file for regression signal. That restored a single Zod major across the monorepo and simplified the worker bundle.
+- By using a queue/worker approach, no review is ever lost, instead, when they fail, they are persisted in the queue and can be retried at once, and subsquently through the UI. I also used the openRouter approach too as it always uses the model that are up and running.
 
-## 3. How we stayed “architect in the loop”
+## Extras
 
-- Reviewed every public route and DTO against the written brief (paths vs internal domain naming).
-- Chose **session-based Better Auth** over JWT deliberately and kept middleware `fetch` for `get-session` (edge-appropriate, not forced into React Query).
-- Kept **BullMQ** triage asynchronous instead of blocking `POST /tickets`, and documented that as an intentional product decision rather than blindly matching “call LLM in request” wording.
+My Planning started from the drawing board, you can see my architectural thinking and decision in the /planning folder, which documents the questions and the reasons why i made the decisions that i made.

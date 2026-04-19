@@ -5,7 +5,6 @@ import { useEffect } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { getPublicApiBase } from '../../lib/api-base';
 
-/** Best-effort live refresh when WebSocket can reach the API (same-site / proxied). */
 export function LiveSync() {
   const queryClient = useQueryClient();
 

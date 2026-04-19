@@ -2,7 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
 import { Logo } from '../../components/ui/logo';
 
@@ -24,11 +24,11 @@ export default function SubmitPage() {
     },
   });
 
-  function onSubmit(e: React.FormEvent) {
+  const onSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setMessage('');
     mutation.mutate();
-  }
+  }, [])
 
   const done = mutation.isSuccess;
 
@@ -39,7 +39,7 @@ export default function SubmitPage() {
           <Logo />
           <Link href="/" className="btn-ghost">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-              <path d="M9.5 6h-7M6 2.5L2.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M9.5 6h-7M6 2.5L2.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Home
           </Link>

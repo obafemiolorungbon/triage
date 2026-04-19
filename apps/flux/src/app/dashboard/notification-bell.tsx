@@ -55,7 +55,7 @@ export function NotificationBell() {
   const markReadMutation = useMutation({
     mutationFn: markNotificationsRead,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 
@@ -155,14 +155,12 @@ export function NotificationBell() {
             {items.map((i) => (
               <li
                 key={i.id}
-                className={`group px-4 py-3 flex gap-3 hover:bg-paper-100/[0.03] transition-colors ${
-                  !i.read ? '' : 'opacity-60'
-                }`}
+                className={`group px-4 py-3 flex gap-3 hover:bg-paper-100/[0.03] transition-colors ${!i.read ? '' : 'opacity-60'
+                  }`}
               >
                 <span
-                  className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                    !i.read ? 'bg-lime' : 'bg-paper-500/40'
-                  }`}
+                  className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${!i.read ? 'bg-lime' : 'bg-paper-500/40'
+                    }`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2">

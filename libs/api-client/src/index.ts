@@ -27,8 +27,6 @@ const ticketSchema = z.object({
 /** Single ticket row — same shape as API `Feedback` JSON. */
 export type TicketDto = z.infer<typeof ticketSchema>;
 export type TicketStatus = TicketDto['status'];
-/** @deprecated Use TicketDto */
-export type FeedbackDto = TicketDto;
 
 const listResponseSchema = z.object({
   items: z.array(ticketSchema),
@@ -38,8 +36,6 @@ const listResponseSchema = z.object({
 });
 
 export type TicketListResponse = z.infer<typeof listResponseSchema>;
-/** @deprecated Use TicketListResponse */
-export type FeedbackListResponse = TicketListResponse;
 
 const similarResponseSchema = z.object({
   items: z.array(
@@ -132,32 +128,6 @@ export function createApiClient(opts: ApiClientOptions) {
           body: JSON.stringify(body),
         },
       );
-    },
-    /** @deprecated Use submitTicket */
-    submitFeedback(body: { submitterEmail: string; rawText: string }) {
-      const customer_email = body.submitterEmail;
-      const description = body.rawText;
-      return this.submitTicket({ customer_email, description });
-    },
-    /** @deprecated Use listTickets */
-    listFeedback(search: string) {
-      return this.listTickets(search);
-    },
-    /** @deprecated Use getTicket */
-    getFeedback(id: string) {
-      return this.getTicket(id);
-    },
-    /** @deprecated Use patchTicketStatus with { status: 'claimed' } */
-    claimFeedback(id: string) {
-      return this.patchTicketStatus(id, { status: 'claimed' });
-    },
-    /** @deprecated Use patchTicketStatus with { status: 'resolved' } */
-    resolveFeedback(id: string) {
-      return this.patchTicketStatus(id, { status: 'resolved' });
-    },
-    /** @deprecated Use addTicketComment */
-    addComment(id: string, body: { body: string }) {
-      return this.addTicketComment(id, body);
     },
   };
 }

@@ -3,7 +3,11 @@ import { z } from 'zod';
 export const feedbackPrioritySchema = z.enum(['low', 'med', 'high', 'urgent']);
 export type FeedbackPriority = z.infer<typeof feedbackPrioritySchema>;
 
-export const feedbackSentimentSchema = z.enum(['negative', 'neutral', 'positive']);
+export const feedbackSentimentSchema = z.enum([
+  'negative',
+  'neutral',
+  'positive',
+]);
 export type FeedbackSentiment = z.infer<typeof feedbackSentimentSchema>;
 
 export const feedbackStatusSchema = z.enum([
@@ -35,14 +39,6 @@ export const feedbackCategorySchema = z.enum([
 ]);
 export type FeedbackCategory = z.infer<typeof feedbackCategorySchema>;
 
-/** @deprecated Use createTicketBodySchema for public API (assessment brief shape). */
-export const createFeedbackBodySchema = z.object({
-  submitterEmail: z.string().email(),
-  rawText: z.string().min(10).max(20_000),
-});
-export type CreateFeedbackBody = z.infer<typeof createFeedbackBodySchema>;
-
-/** Public ticket intake — matches assessment brief field names. */
 export const createTicketBodySchema = z.object({
   customer_email: z.string().email(),
   description: z.string().min(10).max(20_000),

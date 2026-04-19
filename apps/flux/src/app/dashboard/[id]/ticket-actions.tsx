@@ -11,8 +11,8 @@ export function TicketActions({ id }: { id: string }) {
   const client = browserTicketsClient();
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['ticket', id] });
-    void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
   };
 
   const patchMutation = useMutation({
