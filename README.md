@@ -23,7 +23,7 @@ Monorepo for customer feedback intake, OpenRouter-powered triage (BullMQ worker)
 Create the first admin (API must be running):
 
 ```bash
-ADMIN_EMAIL=you@corp.com ADMIN_PASSWORD='YourSecurePass' API_URL=http://localhost:3000 pnpm seed:admin
+ADMIN_EMAIL=you@corp.com ADMIN_PASSWORD='YourSecurePass' API_URL=http://localhost:4200 pnpm seed:admin
 ```
 
 ## Docker (full stack)
@@ -32,8 +32,8 @@ ADMIN_EMAIL=you@corp.com ADMIN_PASSWORD='YourSecurePass' API_URL=http://localhos
 docker compose up --build
 ```
 
-- **Flux**: http://localhost:4200  
-- **API**: http://localhost:3000  
+- **Flux**: http://localhost:3000  
+- **API**: http://localhost:4200  
 - Set `OPENROUTER_API_KEY` in your environment (or leave unset for fallback triage in the worker).
 
 ## Deploy

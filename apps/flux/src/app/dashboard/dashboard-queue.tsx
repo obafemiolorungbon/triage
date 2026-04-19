@@ -1,11 +1,17 @@
 'use client';
 
-import type { TicketDto, TicketListResponse, TicketStatus } from '@triage/api-client';
+import type {
+  TicketDto,
+  TicketListResponse,
+  TicketStatus,
+} from '@triage/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
+import { PriorityPill, StatusDot, StatusPill } from '../../components/ui/status';
+import type { Priority } from '../../components/ui/status';
 import { KanbanBoard } from './kanban-board';
 
 const STATUSES: TicketStatus[] = [
@@ -16,6 +22,8 @@ const STATUSES: TicketStatus[] = [
   'resolved',
   'rejected',
 ];
+
+const PRIORITIES: Priority[] = ['urgent', 'high', 'med', 'low'];
 
 function useListQueryString() {
   const sp = useSearchParams();
@@ -32,7 +40,7 @@ function useListQueryString() {
   }, [sp]);
 }
 
-function StatusSelect({
+function StatusCell({
   ticket,
   listQueryKey,
 }: {
@@ -67,21 +75,25 @@ function StatusSelect({
   });
 
   return (
-    <select
-      className="select select-bordered select-xs max-w-[9rem]"
-      value={ticket.status}
-      disabled={mutation.isPending}
-      onChange={(e) => {
-        const v = e.target.value as TicketStatus;
-        if (v !== ticket.status) mutation.mutate(v);
-      }}
-    >
-      {STATUSES.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+    <div className="relative inline-flex items-center">
+      <StatusPill status={ticket.status} />
+      <select
+        className="absolute inset-0 opacity-0 cursor-pointer"
+        value={ticket.status}
+        disabled={mutation.isPending}
+        aria-label="Change status"
+        onChange={(e) => {
+          const v = e.target.value as TicketStatus;
+          if (v !== ticket.status) mutation.mutate(v);
+        }}
+      >
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -119,182 +131,286 @@ export function DashboardQueue() {
     router.push(s ? `/dashboard?${s}` : '/dashboard');
   }
 
+  const q = sp.get('q') ?? '';
+  const status = sp.get('status') ?? '';
+  const priority = sp.get('priority') ?? '';
+  const noiseOnly = sp.get('noiseOnly') === 'true';
+  const knowledgeOnly = sp.get('knowledgeOnly') === 'true';
+  const hasFilters = Boolean(q || status || priority || noiseOnly || knowledgeOnly);
+
+  const countsByStatus = useMemo(() => {
+    const c: Partial<Record<TicketStatus, number>> = {};
+    data?.items.forEach((t) => {
+      c[t.status] = (c[t.status] ?? 0) + 1;
+    });
+    return c;
+  }, [data]);
+
   return (
-    <div className="container mx-auto space-y-6 px-0">
-      <div className="stats stats-vertical sm:stats-horizontal shadow bg-base-100 w-full sm:w-auto">
-        <div className="stat place-items-center py-3">
-          <div className="stat-title">Queue</div>
-          <div className="stat-value text-2xl">Tickets</div>
-          <div className="stat-desc">
-            {data ? `${data.total} total` : isLoading ? 'Loading…' : '—'}
+    <div className="space-y-6">
+      {/* ==== Header ==== */}
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+        <div>
+          <h1 className="text-4xl md:text-5xl tracking-tightest text-paper-50 font-medium">
+            Tickets
+          </h1>
+          <p className="mt-2 text-sm text-paper-400 font-mono tabular-nums">
+            {data
+              ? `${data.total} · p${data.page} · ${data.pageSize}/page`
+              : isLoading
+                ? '…'
+                : '—'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center p-1 rounded-full surface text-xs font-medium">
+            <Link
+              href={buildHref({ view: null })}
+              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${
+                view === 'table'
+                  ? 'bg-paper-100 text-ink-900'
+                  : 'text-paper-400 hover:text-paper-100'
+              }`}
+            >
+              Table
+            </Link>
+            <Link
+              href={buildHref({ view: 'kanban' })}
+              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${
+                view === 'kanban'
+                  ? 'bg-paper-100 text-ink-900'
+                  : 'text-paper-400 hover:text-paper-100'
+              }`}
+            >
+              Kanban
+            </Link>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <h1 className="text-2xl font-bold">Ticket queue</h1>
-        <div role="tablist" className="tabs tabs-boxed w-fit">
-          <Link
-            role="tab"
-            className={`tab ${view === 'table' ? 'tab-active' : ''}`}
-            href={buildHref({ view: null })}
-          >
-            Table
-          </Link>
-          <Link
-            role="tab"
-            className={`tab ${view === 'kanban' ? 'tab-active' : ''}`}
-            href={buildHref({ view: 'kanban' })}
-          >
-            Kanban
-          </Link>
-        </div>
+      {/* ==== Stat strip ==== */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-px rounded-xl overflow-hidden hairline bg-paper-100/5">
+        {STATUSES.map((s) => (
+          <div key={s} className="bg-ink-900 px-4 py-3 hover:bg-ink-850 transition-colors">
+            <div className="flex items-center gap-2">
+              <StatusDot status={s} size={6} />
+              <span className="text-2xs font-mono uppercase tracking-wider text-paper-500">
+                {s.replace('_', ' ')}
+              </span>
+            </div>
+            <div className="mt-1 text-2xl font-display text-paper-50 tabular-nums">
+              {countsByStatus[s] ?? 0}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="card bg-base-100 shadow-md">
-        <div className="card-body p-4 gap-3">
-          <h2 className="card-title text-base">Filters</h2>
-          <form
-            key={listQs}
-            className="flex flex-col gap-3"
-            onSubmit={onFilterSubmit}
+      {/* ==== Filters ==== */}
+      <form
+        key={listQs}
+        onSubmit={onFilterSubmit}
+        className="surface rounded-xl p-3 flex flex-wrap items-center gap-2"
+      >
+        <div className="relative flex-1 min-w-[220px]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-paper-500 pointer-events-none"
+            aria-hidden
           >
-            <div className="flex flex-wrap gap-2 items-end">
-              <label className="form-control w-full sm:w-40">
-                <span className="label-text text-xs">Status</span>
-                <select
-                  name="status"
-                  className="select select-bordered select-sm"
-                  defaultValue={sp.get('status') ?? ''}
-                >
-                  <option value="">Any status</option>
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="form-control w-full sm:w-40">
-                <span className="label-text text-xs">Priority</span>
-                <select
-                  name="priority"
-                  className="select select-bordered select-sm"
-                  defaultValue={sp.get('priority') ?? ''}
-                >
-                  <option value="">Any priority</option>
-                  <option value="low">low</option>
-                  <option value="med">med</option>
-                  <option value="high">high</option>
-                  <option value="urgent">urgent</option>
-                </select>
-              </label>
-              <label className="form-control flex-1 min-w-[12rem]">
-                <span className="label-text text-xs">Search</span>
-                <input
-                  name="q"
-                  className="input input-bordered input-sm"
-                  placeholder="Text, category…"
-                  defaultValue={sp.get('q') ?? ''}
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-4 items-center">
-              <label className="label cursor-pointer gap-2 justify-start">
-                <input
-                  type="checkbox"
-                  name="noiseOnly"
-                  value="true"
-                  className="checkbox checkbox-sm checkbox-secondary"
-                  defaultChecked={sp.get('noiseOnly') === 'true'}
-                />
-                <span className="label-text">Noise only</span>
-              </label>
-              <label className="label cursor-pointer gap-2 justify-start">
-                <input
-                  type="checkbox"
-                  name="knowledgeOnly"
-                  value="true"
-                  className="checkbox checkbox-sm checkbox-accent"
-                  defaultChecked={sp.get('knowledgeOnly') === 'true'}
-                />
-                <span className="label-text">Knowledge gaps</span>
-              </label>
-              <button type="submit" className="btn btn-primary btn-sm">
-                Apply filters
-              </button>
-            </div>
-          </form>
+            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <input
+            name="q"
+            className="input !pl-9"
+            placeholder="Search"
+            defaultValue={q}
+          />
         </div>
-      </div>
+        <select
+          name="status"
+          className="select select-sm !w-auto"
+          defaultValue={status}
+        >
+          <option value="">Any status</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s.replace('_', ' ')}
+            </option>
+          ))}
+        </select>
+        <select
+          name="priority"
+          className="select select-sm !w-auto"
+          defaultValue={priority}
+        >
+          <option value="">Any priority</option>
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <label className="inline-flex items-center gap-2 px-3 h-8 rounded-full hairline cursor-pointer text-xs text-paper-300 hover:text-paper-50 transition-colors">
+          <input
+            type="checkbox"
+            name="noiseOnly"
+            value="true"
+            className="checkbox"
+            defaultChecked={noiseOnly}
+          />
+          Noise
+        </label>
+        <label className="inline-flex items-center gap-2 px-3 h-8 rounded-full hairline cursor-pointer text-xs text-paper-300 hover:text-paper-50 transition-colors">
+          <input
+            type="checkbox"
+            name="knowledgeOnly"
+            value="true"
+            className="checkbox"
+            defaultChecked={knowledgeOnly}
+          />
+          Knowledge gap
+        </label>
+        <button type="submit" className="btn-primary btn-sm">
+          Apply
+        </button>
+        {hasFilters && (
+          <Link href="/dashboard" className="btn-ghost btn-sm text-paper-500">
+            Reset
+          </Link>
+        )}
+      </form>
 
+      {/* ==== Results ==== */}
       {isLoading && (
-        <div className="flex justify-center py-12">
-          <span className="loading loading-spinner loading-lg text-primary" />
+        <div className="flex justify-center py-20">
+          <span className="spinner" />
         </div>
       )}
+
       {isError && (
-        <div role="alert" className="alert alert-error">
-          <span>{error instanceof Error ? error.message : 'Could not load queue.'}</span>
+        <div
+          role="alert"
+          className="rounded-xl px-4 py-3 text-sm text-[#FF9999]"
+          style={{
+            background: 'rgba(255, 94, 94, 0.08)',
+            boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
+          }}
+        >
+          {error instanceof Error ? error.message : 'Could not load queue.'}
         </div>
       )}
-      {data && !isLoading && (
+
+      {data && !isLoading && data.items.length === 0 && <EmptyState />}
+
+      {data && !isLoading && data.items.length > 0 && (
         <>
-          <p className="text-sm opacity-70">
-            {data.total} total · page {data.page} · {data.pageSize} per page
-          </p>
           {view === 'kanban' ? (
             <KanbanBoard tickets={data.items} listQueryKey={listQueryKey} />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-base-300 bg-base-100 shadow">
-              <table className="table table-zebra table-sm md:table-md">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Priority</th>
-                    <th>Category</th>
-                    <th>Flags</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((f) => (
-                    <tr key={f.id}>
-                      <td className="text-xs whitespace-nowrap">
-                        {new Date(f.createdAt).toLocaleString()}
-                      </td>
-                      <td className="max-w-[10rem] truncate">{f.submitterEmail}</td>
-                      <td>
-                        <StatusSelect ticket={f} listQueryKey={listQueryKey} />
-                      </td>
-                      <td>{f.priority ?? '—'}</td>
-                      <td className="max-w-[8rem] truncate">{f.category ?? '—'}</td>
-                      <td className="text-xs">
-                        {f.isNoise && (
-                          <span className="badge badge-warning badge-sm mr-1">noise</span>
-                        )}
-                        {f.knowledgeGap && (
-                          <span className="badge badge-accent badge-sm">knowledge</span>
-                        )}
-                      </td>
-                      <td>
-                        <Link
-                          href={`/dashboard/${f.id}`}
-                          className="btn btn-ghost btn-xs"
-                        >
-                          Open
-                        </Link>
-                      </td>
+            <div className="surface rounded-xl overflow-hidden">
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-2xs font-mono uppercase tracking-wider text-paper-500 hairline-b">
+                      <th className="text-left font-normal px-4 py-2.5 w-28">When</th>
+                      <th className="text-left font-normal px-3 py-2.5">From</th>
+                      <th className="text-left font-normal px-3 py-2.5 w-32">Status</th>
+                      <th className="text-left font-normal px-3 py-2.5 w-28">Priority</th>
+                      <th className="text-left font-normal px-3 py-2.5 w-40">Category</th>
+                      <th className="text-left font-normal px-3 py-2.5 w-40">Flags</th>
+                      <th className="text-right font-normal px-4 py-2.5 w-16"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.items.map((f) => (
+                      <tr
+                        key={f.id}
+                        className="group border-t border-paper-100/[0.04] hover:bg-paper-100/[0.02] transition-colors"
+                      >
+                        <td className="px-4 py-3 text-2xs font-mono text-paper-500 tabular-nums whitespace-nowrap align-middle">
+                          {new Date(f.createdAt).toLocaleString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-paper-100/5 text-paper-300 text-xs font-medium shrink-0">
+                              {(f.submitterEmail[0] ?? '?').toUpperCase()}
+                            </div>
+                            <span className="truncate text-paper-200 max-w-[16rem]">
+                              {f.submitterEmail}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <StatusCell ticket={f} listQueryKey={listQueryKey} />
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <PriorityPill priority={f.priority as Priority | null} />
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          {f.category ? (
+                            <span className="text-paper-300 text-xs">{f.category}</span>
+                          ) : (
+                            <span className="text-paper-500 font-mono text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <div className="flex flex-wrap gap-1">
+                            {f.isNoise && (
+                              <span
+                                className="pill"
+                                style={{
+                                  color: '#FFA94D',
+                                  background: 'rgba(255,169,77,0.08)',
+                                  boxShadow: 'inset 0 0 0 1px rgba(255,169,77,0.2)',
+                                }}
+                              >
+                                noise
+                              </span>
+                            )}
+                            {f.knowledgeGap && (
+                              <span className="pill pill-accent">gap</span>
+                            )}
+                            {!f.isNoise && !f.knowledgeGap && (
+                              <span className="text-paper-500 font-mono text-xs">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right align-middle">
+                          <Link
+                            href={`/dashboard/${f.id}`}
+                            className="inline-flex items-center gap-1 text-xs text-paper-400 opacity-0 group-hover:opacity-100 hover:text-lime transition-all"
+                          >
+                            Open
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+                              <path d="M2.5 6h7M6 2.5L9.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="surface rounded-2xl p-16 text-center">
+      <h3 className="text-lg text-paper-50 tracking-tight">No tickets</h3>
     </div>
   );
 }

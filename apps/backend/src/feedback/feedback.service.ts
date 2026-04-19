@@ -16,7 +16,7 @@ import {
 } from '@triage/shared-types';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { TRIAGE_QUEUE, type TriageJobData } from '../queue/triage.constants';
+import { INTAKE_QUEUE, type IntakeJobData } from '../queue/triage.constants';
 import type { AuthedRequest } from '../guards/session.guard';
 
 /** Agent-allowed status transitions when not using dedicated claim/resolve paths. */
@@ -33,7 +33,7 @@ const AGENT_TRANSITIONS: Record<FeedbackStatus, FeedbackStatus[]> = {
 export class FeedbackService {
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(TRIAGE_QUEUE) private readonly triageQueue: Queue<TriageJobData>,
+    @InjectQueue(INTAKE_QUEUE) private readonly intakeQueue: Queue<IntakeJobData>,
     private readonly events: EventsGateway,
   ) {}
 
@@ -53,7 +53,7 @@ export class FeedbackService {
         status: 'new',
       },
     });
-    await this.triageQueue.add('triage', { feedbackId: fb.id });
+    await this.intakeQueue.add('intake', { feedbackId: fb.id });
     return { id: fb.id, status: fb.status };
   }
 

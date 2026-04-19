@@ -1,20 +1,23 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
-import { runTriagePipeline, type TriageClientConfig } from './triage-llm';
-import type { Env } from '../config/env.schema';
+import { AiService } from '../ai/ai.service';
 import { NotificationService } from '../notification/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TRIAGE_QUEUE, type TriageJobData } from '../queue/triage.constants';
 
+/**
+ * Triage phase: runs the main model on feedback that already passed the spam
+ * filter. Persists a `FeedbackTriageRun` audit row and mirrors the latest
+ * values onto the denormalised `Feedback` columns used by list/Kanban views.
+ */
 @Processor(TRIAGE_QUEUE)
 export class TriageProcessor extends WorkerHost {
   private readonly log = new Logger(TriageProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService<Env, true>,
+    private readonly ai: AiService,
     private readonly notifications: NotificationService,
   ) {
     super();
@@ -30,61 +33,44 @@ export class TriageProcessor extends WorkerHost {
       return;
     }
 
-    const apiKey = this.config.get('OPENROUTER_API_KEY', { infer: true });
-    const triageCfg: TriageClientConfig = {
-      apiKey: apiKey || 'disabled',
-      filterModel: this.config.get('OPENROUTER_MODEL_FILTER', { infer: true }),
-      mainModel: this.config.get('OPENROUTER_MODEL_MAIN', { infer: true }),
-    };
+    if (!this.ai.isEnabled()) {
+      await this.applyFallbackTriage(feedbackId, fb.rawText, fb.submitterEmail);
+      return;
+    }
 
     try {
-      if (!apiKey) {
-        await this.prisma.client.feedback.update({
+      const industryContext = this.ai.getIndustryContext() || undefined;
+      const triage = await this.ai.triageTicket(fb.rawText, {
+        industryContext,
+      });
+
+      await this.prisma.client.$transaction([
+        this.prisma.client.feedbackTriageRun.create({
+          data: {
+            feedbackId,
+            model: this.ai.getMainModelName(),
+            cleanedText: triage.cleanedText,
+            category: triage.category,
+            priority: triage.priority,
+            sentiment: triage.sentiment,
+            knowledgeGap: triage.knowledgeGap,
+            suggestedTags: triage.suggestedTags,
+            industryContext: industryContext ?? null,
+          },
+        }),
+        this.prisma.client.feedback.update({
           where: { id: feedbackId },
           data: {
-            cleanedText: fb.rawText,
-            category: 'uncategorized',
-            priority: 'low',
-            sentiment: 'neutral',
-            knowledgeGap: false,
+            cleanedText: triage.cleanedText,
+            category: triage.category,
+            priority: triage.priority,
+            sentiment: triage.sentiment,
+            knowledgeGap: triage.knowledgeGap,
             status: 'triaged',
             triagedAt: new Date(),
           },
-        });
-        await this.notifications.notifyFeedbackTriaged({
-          to: fb.submitterEmail,
-          feedbackId,
-          category: 'uncategorized',
-          priority: 'low',
-        });
-        return;
-      }
-
-      const result = await runTriagePipeline(triageCfg, fb.rawText);
-      if (result.kind === 'rejected') {
-        await this.prisma.client.feedback.update({
-          where: { id: feedbackId },
-          data: {
-            status: 'rejected',
-            isNoise: true,
-            triagedAt: new Date(),
-          },
-        });
-        return;
-      }
-      const { triage } = result;
-      await this.prisma.client.feedback.update({
-        where: { id: feedbackId },
-        data: {
-          cleanedText: triage.cleanedText,
-          category: triage.category,
-          priority: triage.priority,
-          sentiment: triage.sentiment,
-          knowledgeGap: triage.knowledgeGap,
-          status: 'triaged',
-          triagedAt: new Date(),
-        },
-      });
+        }),
+      ]);
 
       await this.notifications.notifyFeedbackTriaged({
         to: fb.submitterEmail,
@@ -115,5 +101,30 @@ export class TriageProcessor extends WorkerHost {
       this.log.error(`Triage failed for ${feedbackId}`, e as Error);
       throw e;
     }
+  }
+
+  private async applyFallbackTriage(
+    feedbackId: string,
+    rawText: string,
+    submitterEmail: string,
+  ): Promise<void> {
+    await this.prisma.client.feedback.update({
+      where: { id: feedbackId },
+      data: {
+        cleanedText: rawText,
+        category: 'other',
+        priority: 'low',
+        sentiment: 'neutral',
+        knowledgeGap: false,
+        status: 'triaged',
+        triagedAt: new Date(),
+      },
+    });
+    await this.notifications.notifyFeedbackTriaged({
+      to: submitterEmail,
+      feedbackId,
+      category: 'other',
+      priority: 'low',
+    });
   }
 }

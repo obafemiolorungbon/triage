@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getPublicApiBase } from '../../lib/api-base';
 
 type NotificationRow = {
@@ -30,9 +30,21 @@ async function markNotificationsRead(ids: string[]): Promise<void> {
   if (!r.ok) throw new Error('Failed to mark read');
 }
 
+function relative(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const listQuery = useQuery({
     queryKey: ['notifications'],
@@ -50,84 +62,118 @@ export function NotificationBell() {
   const items = listQuery.data ?? [];
   const unread = items.filter((i) => !i.read).length;
 
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   function markAllVisibleRead() {
     const ids = items.filter((i) => !i.read).map((i) => i.id);
     if (ids.length) markReadMutation.mutate(ids);
   }
 
   return (
-    <div className="dropdown dropdown-end">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
-        tabIndex={0}
-        className="btn btn-ghost btn-circle"
-        onClick={() =>
+        className="relative inline-flex items-center justify-center w-9 h-9 rounded-full text-paper-300 hover:text-paper-50 hover:bg-paper-100/5 transition-colors cursor-pointer"
+        onClick={() => {
           setOpen((prev) => {
             const next = !prev;
             if (next) void queryClient.invalidateQueries({ queryKey: ['notifications'] });
             return next;
-          })
-        }
+          });
+        }}
         aria-label="Notifications"
         aria-expanded={open}
       >
-        <span className="indicator">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth="1.5"
+        <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden>
+          <path
+            d="M6 8a6 6 0 1112 0c0 3 1.5 4.5 2 5.5H4c.5-1 2-2.5 2-5.5zM9.5 18a2.5 2.5 0 005 0"
             stroke="currentColor"
-            className="w-6 h-6"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-            />
-          </svg>
-          {unread > 0 && (
-            <span className="badge badge-xs badge-primary indicator-item">{unread}</span>
-          )}
-        </span>
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {unread > 0 && (
+          <span className="absolute top-1.5 right-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-lime text-[10px] font-mono font-semibold text-ink-900 tabular-nums shadow-glow-lime">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
       </button>
+
       {open && (
         <div
-          tabIndex={0}
-          className="dropdown-content z-[1] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-0 shadow-xl"
+          role="dialog"
+          aria-label="Notifications"
+          className="absolute right-0 mt-2 w-[360px] rounded-2xl surface-raised overflow-hidden z-50 animate-fade-in"
         >
-          <div className="flex items-center justify-between border-b border-base-200 px-3 py-2">
-            <span className="text-sm font-semibold">Notifications</span>
+          <div className="px-4 py-3 flex items-center justify-between hairline-b">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-paper-50">Notifications</span>
+              {unread > 0 && (
+                <span className="pill pill-accent !h-4 !text-[10px] !px-1.5">
+                  {unread} new
+                </span>
+              )}
+            </div>
             {unread > 0 && (
               <button
                 type="button"
-                className="btn btn-ghost btn-xs"
+                className="text-xs text-paper-400 hover:text-lime transition-colors cursor-pointer disabled:opacity-50"
                 disabled={markReadMutation.isPending}
-                onClick={() => markAllVisibleRead()}
+                onClick={markAllVisibleRead}
               >
                 Mark all read
               </button>
             )}
           </div>
-          <ul className="menu max-h-80 flex-nowrap overflow-y-auto p-2">
+          <ul className="max-h-[420px] overflow-y-auto scrollbar-thin divide-y divide-paper-100/5">
             {listQuery.isLoading && (
-              <li className="disabled">
-                <span className="loading loading-spinner loading-sm" />
+              <li className="p-8 flex justify-center">
+                <span className="spinner" />
               </li>
             )}
             {listQuery.isError && (
-              <li className="px-2 py-1 text-sm text-error">Could not load.</li>
+              <li className="p-4 text-sm text-[#FF9999]">Could not load.</li>
             )}
             {!listQuery.isLoading && items.length === 0 && (
-              <li className="px-2 py-2 text-sm opacity-70">No notifications</li>
+              <li className="p-10 text-center text-sm text-paper-500">No notifications</li>
             )}
             {items.map((i) => (
-              <li key={i.id}>
-                <div className="flex flex-col items-start gap-0 py-2">
-                  <span className={`text-sm font-medium ${!i.read ? '' : 'opacity-60'}`}>
-                    {i.title}
-                  </span>
-                  <span className="text-xs opacity-60 line-clamp-2">{i.body}</span>
+              <li
+                key={i.id}
+                className={`group px-4 py-3 flex gap-3 hover:bg-paper-100/[0.03] transition-colors ${
+                  !i.read ? '' : 'opacity-60'
+                }`}
+              >
+                <span
+                  className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
+                    !i.read ? 'bg-lime' : 'bg-paper-500/40'
+                  }`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-sm font-medium text-paper-100 truncate">
+                      {i.title}
+                    </p>
+                    <span className="text-2xs font-mono text-paper-500 shrink-0">
+                      {relative(i.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-paper-400 line-clamp-2">{i.body}</p>
                 </div>
               </li>
             ))}

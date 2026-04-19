@@ -7,11 +7,12 @@ import {
 } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 import { Server } from 'socket.io';
+import { getCorsOrigins } from '../config/cors-origins';
 
 @WebSocketGateway({
   namespace: '/events',
   cors: {
-    origin: process.env.APP_URL ?? 'http://localhost:4200',
+    origin: getCorsOrigins(),
     credentials: true,
   },
 })

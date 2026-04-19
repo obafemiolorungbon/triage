@@ -19,6 +19,22 @@ export type FeedbackStatus = z.infer<typeof feedbackStatusSchema>;
 export const staffRoleSchema = z.enum(['admin', 'agent']);
 export type StaffRole = z.infer<typeof staffRoleSchema>;
 
+/**
+ * Bounded set of categories the triage model is allowed to emit. Keep in sync
+ * with the prompt in `apps/backend/src/ai/prompts.ts` and any UI filters.
+ */
+export const feedbackCategorySchema = z.enum([
+  'bug',
+  'feature_request',
+  'billing',
+  'account',
+  'performance',
+  'security',
+  'how_to',
+  'other',
+]);
+export type FeedbackCategory = z.infer<typeof feedbackCategorySchema>;
+
 /** @deprecated Use createTicketBodySchema for public API (assessment brief shape). */
 export const createFeedbackBodySchema = z.object({
   submitterEmail: z.string().email(),
@@ -41,7 +57,7 @@ export type PatchTicketBody = z.infer<typeof patchTicketBodySchema>;
 
 export const triageResultSchema = z.object({
   cleanedText: z.string(),
-  category: z.string(),
+  category: feedbackCategorySchema,
   priority: feedbackPrioritySchema,
   sentiment: feedbackSentimentSchema,
   knowledgeGap: z.boolean(),

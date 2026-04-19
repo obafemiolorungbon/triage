@@ -25,6 +25,7 @@ RUN pnpm exec nx run backend:worker:build
 FROM docker.io/node:20-alpine AS runner
 
 ENV NODE_ENV=production
+ENV PORT=4200
 
 RUN addgroup --system backend && \
     adduser --system -G backend backend
@@ -44,7 +45,7 @@ RUN chmod +x /entry.sh
 RUN chown -R backend:backend /usr/src/app
 
 USER backend
-EXPOSE 3000
+EXPOSE 4200
 
 ENTRYPOINT ["/entry.sh"]
 CMD ["api"]

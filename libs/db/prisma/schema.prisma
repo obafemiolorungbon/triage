@@ -113,12 +113,37 @@ model Feedback {
   triagedAt       DateTime?
   resolvedAt      DateTime?
 
-  comments  Comment[]
-  auditLogs AuditLog[]
+  comments   Comment[]
+  auditLogs  AuditLog[]
+  triageRuns FeedbackTriageRun[]
 
   @@index([status, priority, createdAt])
   @@index([assignedAgentId])
   @@map("feedback")
+}
+
+/**
+ * Immutable record of one main-model triage run for a feedback item. The
+ * denormalised fields on `Feedback` always mirror the latest row here so
+ * list/Kanban queries stay cheap, while this table keeps a full audit trail
+ * (prompt inputs + model output) for reproducibility and re-triage.
+ */
+model FeedbackTriageRun {
+  id              String             @id @default(cuid())
+  feedbackId      String
+  feedback        Feedback           @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  model           String
+  cleanedText     String             @db.Text
+  category        String
+  priority        FeedbackPriority
+  sentiment       FeedbackSentiment
+  knowledgeGap    Boolean
+  suggestedTags   String[]
+  industryContext String?            @db.Text
+  createdAt       DateTime           @default(now())
+
+  @@index([feedbackId, createdAt])
+  @@map("feedback_triage_run")
 }
 
 model Comment {

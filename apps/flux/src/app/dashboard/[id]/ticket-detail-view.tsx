@@ -3,7 +3,10 @@
 import type { TicketDto } from '@triage/api-client';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useState } from 'react';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
+import { PriorityPill, StatusPill } from '../../../components/ui/status';
+import type { Priority } from '../../../components/ui/status';
 import { TicketActions } from './ticket-actions';
 
 export function TicketDetailView({ id }: { id: string }) {
@@ -22,16 +25,19 @@ export function TicketDetailView({ id }: { id: string }) {
 
   if (ticketQuery.isLoading) {
     return (
-      <div className="flex justify-center py-16">
-        <span className="loading loading-spinner loading-lg text-primary" />
+      <div className="flex justify-center py-24">
+        <span className="spinner" />
       </div>
     );
   }
 
   if (ticketQuery.isError || !ticketQuery.data) {
     return (
-      <div role="alert" className="alert alert-error max-w-2xl">
-        Not found or no access.
+      <div className="max-w-2xl mx-auto mt-16 text-center">
+        <h1 className="text-2xl text-paper-50 font-medium">Not found</h1>
+        <Link href="/dashboard" className="btn-secondary mt-6 inline-flex">
+          ← Queue
+        </Link>
       </div>
     );
   }
@@ -40,77 +46,288 @@ export function TicketDetailView({ id }: { id: string }) {
   const similar = similarQuery.data?.items ?? [];
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <Link href="/dashboard" className="btn btn-ghost btn-sm gap-2">
-        ← Queue
+    <div className="stagger">
+      {/* ===== Back link ===== */}
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-paper-500 hover:text-lime transition-colors mb-8 cursor-pointer"
+      >
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+          <path
+            d="M9.5 6h-7M6 2.5L2.5 6 6 9.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Queue
       </Link>
 
-      <div className="card bg-base-100 shadow-lg border border-base-200">
-        <div className="card-body gap-3">
-          <h1 className="card-title text-xl">Ticket {f.id}</h1>
-          <div className="flex flex-wrap gap-2">
-            <span className="badge badge-lg">{f.status}</span>
-            {f.priority && (
-              <span className="badge badge-secondary badge-lg">{f.priority}</span>
-            )}
-            {f.category && (
-              <span className="badge badge-outline badge-lg">{f.category}</span>
-            )}
-            {f.sentiment && (
-              <span className="badge badge-ghost badge-lg">{f.sentiment}</span>
-            )}
-            {f.knowledgeGap && (
-              <span className="badge badge-accent badge-lg">knowledge gap</span>
-            )}
-          </div>
-          <p className="text-sm opacity-70">
-            From <strong>{f.submitterEmail}</strong> ·{' '}
-            {new Date(f.createdAt).toLocaleString()}
-            {f.triagedAt && ` · triaged ${new Date(f.triagedAt).toLocaleString()}`}
-          </p>
-          <div className="divider my-1" />
-          <h2 className="font-semibold">Cleaned text</h2>
-          <p className="whitespace-pre-wrap text-sm bg-base-200 p-4 rounded-box">
-            {f.cleanedText ?? '— (pending triage)'}
-          </p>
-          <details className="collapse collapse-arrow bg-base-200 rounded-box">
-            <summary className="collapse-title text-sm font-medium min-h-0 py-3">
-              Raw submission
-            </summary>
-            <div className="collapse-content text-sm whitespace-pre-wrap pb-3">
-              {f.rawText}
+      {/* ===== Main grid ===== */}
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* -- Left: content -- */}
+        <article className="lg:col-span-2 space-y-8">
+          {/* Header */}
+          <header>
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <StatusPill status={f.status} />
+              <PriorityPill priority={f.priority as Priority | null} />
+              {f.category && (
+                <span className="pill">{f.category}</span>
+              )}
+              {f.sentiment && (
+                <span className="pill">sentiment: {f.sentiment}</span>
+              )}
+              {f.knowledgeGap && (
+                <span className="pill pill-accent">knowledge gap</span>
+              )}
+              {f.isNoise && (
+                <span
+                  className="pill"
+                  style={{
+                    color: '#FFA94D',
+                    background: 'rgba(255,169,77,0.08)',
+                    boxShadow: 'inset 0 0 0 1px rgba(255,169,77,0.2)',
+                  }}
+                >
+                  noise
+                </span>
+              )}
             </div>
-          </details>
-        </div>
-      </div>
+            <h1 className="text-4xl md:text-5xl tracking-tightest text-paper-50 text-balance leading-[1.05]">
+              {f.category ? (
+                <span>{f.category}</span>
+              ) : (
+                <span className="text-paper-300">Ticket</span>
+              )}
+            </h1>
+            <p className="mt-4 text-sm text-paper-400 flex flex-wrap gap-x-4 gap-y-1 font-mono">
+              <span>
+                <span className="text-paper-500">from</span>{' '}
+                <span className="text-paper-200">{f.submitterEmail}</span>
+              </span>
+              <span>
+                <span className="text-paper-500">id</span>{' '}
+                <span className="text-paper-300">{f.id.slice(0, 12)}</span>
+              </span>
+              <span>
+                <span className="text-paper-500">received</span>{' '}
+                <span className="text-paper-300">
+                  {new Date(f.createdAt).toLocaleString()}
+                </span>
+              </span>
+              {f.triagedAt && (
+                <span>
+                  <span className="text-paper-500">triaged</span>{' '}
+                  <span className="text-paper-300">
+                    {new Date(f.triagedAt).toLocaleString()}
+                  </span>
+                </span>
+              )}
+            </p>
+          </header>
 
-      <div className="card bg-base-100 shadow-md border border-base-200">
-        <div className="card-body gap-3">
-          <h2 className="card-title text-lg">Actions</h2>
-          <TicketActions id={id} />
-        </div>
-      </div>
+          {/* Cleaned text */}
+          <section>
+            <SectionHead num="01" label="Cleaned text" />
+            <div className="mt-4 surface rounded-xl p-6">
+              <p className="text-paper-100 leading-relaxed whitespace-pre-wrap text-[15px]">
+                {f.cleanedText ?? (
+                  <span className="text-paper-500">—</span>
+                )}
+              </p>
+            </div>
+          </section>
 
-      <div className="card bg-base-100 shadow-md border border-base-200">
-        <div className="card-body gap-3">
-          <h2 className="card-title text-lg">Similar tickets</h2>
-          {similarQuery.isLoading ? (
-            <span className="loading loading-dots loading-md" />
-          ) : similar.length === 0 ? (
-            <p className="text-sm opacity-70">No similar items yet.</p>
-          ) : (
-            <ul className="menu menu-sm bg-base-200 rounded-box max-w-md">
-              {similar.map((s) => (
-                <li key={s.id}>
-                  <Link href={`/dashboard/${s.id}`} className="link">
-                    {s.id}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          {/* Raw */}
+          <section>
+            <RawCollapse raw={f.rawText} />
+          </section>
+
+          {/* Similar tickets */}
+          <section>
+            <SectionHead num="02" label="Similar" />
+            {similarQuery.isLoading ? (
+              <div className="mt-4 flex items-center gap-2 text-paper-500 text-sm">
+                <span className="spinner !w-3.5 !h-3.5" />
+                …
+              </div>
+            ) : similar.length === 0 ? (
+              <p className="mt-4 text-sm text-paper-500">None</p>
+            ) : (
+              <ul className="mt-4 surface rounded-xl divide-y divide-paper-100/5 overflow-hidden">
+                {similar.map((s) => (
+                  <li key={s.id}>
+                    <Link
+                      href={`/dashboard/${s.id}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-paper-100/[0.03] transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono text-xs text-paper-300">
+                          {s.id.slice(0, 8)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <SimilarityMeter score={s.score} />
+                        <span className="text-xs font-mono text-paper-500 tabular-nums">
+                          {Math.round(s.score * 100)}%
+                        </span>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 12 12"
+                          fill="none"
+                          className="text-paper-500 group-hover:text-lime transition-colors"
+                          aria-hidden
+                        >
+                          <path
+                            d="M2.5 6h7M6 2.5L9.5 6 6 9.5"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </article>
+
+        {/* -- Right: sticky action rail -- */}
+        <aside className="lg:col-span-1 space-y-6">
+          <div className="sticky top-20 space-y-6">
+            <div className="surface rounded-xl p-5">
+              <SectionHead num="·" label="Actions" />
+              <div className="mt-4">
+                <TicketActions id={id} />
+              </div>
+            </div>
+
+            {/* Quick facts */}
+            <div className="surface rounded-xl p-5">
+              <SectionHead num="·" label="Metadata" />
+              <dl className="mt-4 space-y-3 text-sm">
+                <Fact label="Status" value={<StatusPill status={f.status} />} />
+                <Fact
+                  label="Priority"
+                  value={<PriorityPill priority={f.priority as Priority | null} />}
+                />
+                <Fact
+                  label="Sentiment"
+                  value={
+                    f.sentiment ? (
+                      <span className="text-paper-200 capitalize">{f.sentiment}</span>
+                    ) : (
+                      <span className="text-paper-500 font-mono">—</span>
+                    )
+                  }
+                />
+                <Fact
+                  label="Assigned"
+                  value={
+                    f.assignedAgentId ? (
+                      <span className="font-mono text-xs text-paper-200">
+                        {f.assignedAgentId.slice(0, 8)}
+                      </span>
+                    ) : (
+                      <span className="text-paper-500 font-mono">unassigned</span>
+                    )
+                  }
+                />
+                <Fact
+                  label="Resolved"
+                  value={
+                    f.resolvedAt ? (
+                      <span className="font-mono text-xs text-paper-300">
+                        {new Date(f.resolvedAt).toLocaleDateString()}
+                      </span>
+                    ) : (
+                      <span className="text-paper-500 font-mono">—</span>
+                    )
+                  }
+                />
+              </dl>
+            </div>
+          </div>
+        </aside>
       </div>
+    </div>
+  );
+}
+
+function SectionHead({ num, label }: { num: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2.5 text-2xs font-mono uppercase tracking-[0.18em] text-paper-500">
+      <span className="text-lime">{num}</span>
+      <span className="h-px w-6 bg-paper-500/40" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-2xs font-mono uppercase tracking-wider text-paper-500">
+        {label}
+      </dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function SimilarityMeter({ score }: { score: number }) {
+  const pct = Math.max(0, Math.min(1, score));
+  return (
+    <div className="w-16 h-1 rounded-full bg-paper-100/[0.06] overflow-hidden">
+      <div
+        className="h-full bg-lime"
+        style={{ width: `${pct * 100}%`, boxShadow: '0 0 8px rgba(217,255,77,0.5)' }}
+      />
+    </div>
+  );
+}
+
+function RawCollapse({ raw }: { raw: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="surface rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-5 py-3 hover:bg-paper-100/[0.03] transition-colors cursor-pointer"
+      >
+        <span className="text-xs font-mono uppercase tracking-wider text-paper-400">
+          Raw
+        </span>
+        <svg
+          viewBox="0 0 12 12"
+          fill="none"
+          className={`w-3 h-3 text-paper-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        >
+          <path
+            d="M3 4.5L6 7.5L9 4.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 pt-1 border-t border-paper-100/5">
+          <pre className="text-sm text-paper-300 whitespace-pre-wrap font-mono leading-relaxed">
+            {raw}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

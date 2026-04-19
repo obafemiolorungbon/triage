@@ -5,8 +5,8 @@ export default function DashboardPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex justify-center p-16">
-          <span className="loading loading-spinner loading-lg text-primary" />
+        <div className="flex justify-center py-24">
+          <span className="spinner" />
         </div>
       }
     >

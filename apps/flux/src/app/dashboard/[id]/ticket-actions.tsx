@@ -29,50 +29,101 @@ export function TicketActions({ id }: { id: string }) {
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          className="btn btn-primary btn-sm"
+          className="btn-primary btn-sm"
           disabled={patchMutation.isPending}
           onClick={() => patchMutation.mutate('claimed')}
         >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M2 6l3 3L10 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           Claim
         </button>
         <button
           type="button"
-          className="btn btn-success btn-sm"
+          className="btn-secondary btn-sm"
           disabled={patchMutation.isPending}
           onClick={() => patchMutation.mutate('resolved')}
+          style={{
+            background: 'rgba(74, 222, 128, 0.08)',
+            color: '#4ADE80',
+            boxShadow: 'inset 0 0 0 1px rgba(74, 222, 128, 0.25)',
+          }}
         >
           Resolve
         </button>
       </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={patchMutation.isPending}
+          onClick={() => patchMutation.mutate('in_progress')}
+        >
+          In progress
+        </button>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={patchMutation.isPending}
+          onClick={() => patchMutation.mutate('rejected')}
+        >
+          Reject
+        </button>
+      </div>
+
       {patchMutation.isError && (
-        <div className="alert alert-error alert-sm text-sm">{String(patchMutation.error)}</div>
+        <div
+          className="rounded-lg px-3 py-2 text-xs text-[#FF9999]"
+          style={{
+            background: 'rgba(255, 94, 94, 0.08)',
+            boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
+          }}
+        >
+          {String(patchMutation.error)}
+        </div>
       )}
-      <div className="divider my-0 text-xs">Comments</div>
-      <div className="flex flex-col gap-2">
+
+      <div className="rule" />
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-2xs font-mono uppercase tracking-wider text-paper-500">
+            Comment
+          </span>
+          <span className="text-2xs font-mono text-paper-500 tabular-nums">
+            {comment.length}
+          </span>
+        </div>
         <textarea
-          className="textarea textarea-bordered min-h-24"
-          placeholder="Add an internal comment…"
+          className="textarea min-h-24 !text-sm"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
         <button
           type="button"
-          className="btn btn-outline btn-sm w-fit"
+          className="btn-secondary btn-sm w-full"
           disabled={commentMutation.isPending || !comment.trim()}
           onClick={() => commentMutation.mutate(comment.trim())}
         >
-          Post comment
+          {commentMutation.isPending ? '…' : 'Post'}
         </button>
+        {commentMutation.isError && (
+          <div
+            className="rounded-lg px-3 py-2 text-xs text-[#FF9999]"
+            style={{
+              background: 'rgba(255, 94, 94, 0.08)',
+              boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
+            }}
+          >
+            {String(commentMutation.error)}
+          </div>
+        )}
       </div>
-      {commentMutation.isError && (
-        <div className="alert alert-error alert-sm text-sm">
-          {String(commentMutation.error)}
-        </div>
-      )}
     </div>
   );
 }
