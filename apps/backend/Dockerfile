@@ -15,7 +15,10 @@ COPY apps ./apps
 COPY libs ./libs
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm exec prisma generate --schema=libs/db/prisma/schema.prisma
+# Generate Prisma Client from within libs/db so the CLI resolves
+# @prisma/client locally and skips the pnpm-workspace auto-add path
+# (see prisma/prisma#26658, #5340, #18483).
+RUN cd libs/db && pnpm exec prisma generate --schema=prisma/schema.prisma
 RUN pnpm exec nx run backend:build
 RUN pnpm exec nx run backend:worker:build
 

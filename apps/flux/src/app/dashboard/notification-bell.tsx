@@ -1,27 +1,59 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { getPublicApiBase } from '../../lib/api-base';
 
-type Row = { id: string; title: string; read: boolean; createdAt: string };
+type NotificationRow = {
+  id: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+};
+
+async function fetchNotifications(): Promise<NotificationRow[]> {
+  const r = await fetch(`${getPublicApiBase()}/api/v1/notifications`, {
+    credentials: 'include',
+  });
+  if (!r.ok) throw new Error('Failed to load notifications');
+  return (await r.json()) as NotificationRow[];
+}
+
+async function markNotificationsRead(ids: string[]): Promise<void> {
+  const r = await fetch(`${getPublicApiBase()}/api/v1/notifications/read`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  if (!r.ok) throw new Error('Failed to mark read');
+}
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Row[]>([]);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!open) return;
-    void (async () => {
-      const r = await fetch(`${getPublicApiBase()}/api/v1/notifications`, {
-        credentials: 'include',
-      });
-      if (r.ok) {
-        setItems((await r.json()) as Row[]);
-      }
-    })();
-  }, [open]);
+  const listQuery = useQuery({
+    queryKey: ['notifications'],
+    queryFn: fetchNotifications,
+    refetchInterval: 60_000,
+  });
 
+  const markReadMutation = useMutation({
+    mutationFn: markNotificationsRead,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  const items = listQuery.data ?? [];
   const unread = items.filter((i) => !i.read).length;
+
+  function markAllVisibleRead() {
+    const ids = items.filter((i) => !i.read).map((i) => i.id);
+    if (ids.length) markReadMutation.mutate(ids);
+  }
 
   return (
     <div className="dropdown dropdown-end">
@@ -29,8 +61,15 @@ export function NotificationBell() {
         type="button"
         tabIndex={0}
         className="btn btn-ghost btn-circle"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() =>
+          setOpen((prev) => {
+            const next = !prev;
+            if (next) void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+            return next;
+          })
+        }
         aria-label="Notifications"
+        aria-expanded={open}
       >
         <span className="indicator">
           <svg
@@ -48,27 +87,52 @@ export function NotificationBell() {
             />
           </svg>
           {unread > 0 && (
-            <span className="badge badge-xs badge-primary indicator-item">
-              {unread}
-            </span>
+            <span className="badge badge-xs badge-primary indicator-item">{unread}</span>
           )}
         </span>
       </button>
       {open && (
-        <ul
+        <div
           tabIndex={0}
-          className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-72 max-h-80 overflow-y-auto border border-base-300"
+          className="dropdown-content z-[1] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-0 shadow-xl"
         >
-          {items.length === 0 ? (
-            <li className="px-2 py-1 text-sm opacity-70">No notifications</li>
-          ) : (
-            items.map((i) => (
-              <li key={i.id}>
-                <span className="text-xs">{i.title}</span>
+          <div className="flex items-center justify-between border-b border-base-200 px-3 py-2">
+            <span className="text-sm font-semibold">Notifications</span>
+            {unread > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                disabled={markReadMutation.isPending}
+                onClick={() => markAllVisibleRead()}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <ul className="menu max-h-80 flex-nowrap overflow-y-auto p-2">
+            {listQuery.isLoading && (
+              <li className="disabled">
+                <span className="loading loading-spinner loading-sm" />
               </li>
-            ))
-          )}
-        </ul>
+            )}
+            {listQuery.isError && (
+              <li className="px-2 py-1 text-sm text-error">Could not load.</li>
+            )}
+            {!listQuery.isLoading && items.length === 0 && (
+              <li className="px-2 py-2 text-sm opacity-70">No notifications</li>
+            )}
+            {items.map((i) => (
+              <li key={i.id}>
+                <div className="flex flex-col items-start gap-0 py-2">
+                  <span className={`text-sm font-medium ${!i.read ? '' : 'opacity-60'}`}>
+                    {i.title}
+                  </span>
+                  <span className="text-xs opacity-60 line-clamp-2">{i.body}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

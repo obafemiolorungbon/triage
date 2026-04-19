@@ -19,11 +19,25 @@ export type FeedbackStatus = z.infer<typeof feedbackStatusSchema>;
 export const staffRoleSchema = z.enum(['admin', 'agent']);
 export type StaffRole = z.infer<typeof staffRoleSchema>;
 
+/** @deprecated Use createTicketBodySchema for public API (assessment brief shape). */
 export const createFeedbackBodySchema = z.object({
   submitterEmail: z.string().email(),
   rawText: z.string().min(10).max(20_000),
 });
 export type CreateFeedbackBody = z.infer<typeof createFeedbackBodySchema>;
+
+/** Public ticket intake — matches assessment brief field names. */
+export const createTicketBodySchema = z.object({
+  customer_email: z.string().email(),
+  description: z.string().min(10).max(20_000),
+  title: z.string().max(500).optional(),
+});
+export type CreateTicketBody = z.infer<typeof createTicketBodySchema>;
+
+export const patchTicketBodySchema = z.object({
+  status: feedbackStatusSchema,
+});
+export type PatchTicketBody = z.infer<typeof patchTicketBodySchema>;
 
 export const triageResultSchema = z.object({
   cleanedText: z.string(),

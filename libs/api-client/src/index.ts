@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const feedbackSchema = z.object({
+const ticketSchema = z.object({
   id: z.string(),
   submitterEmail: z.string(),
   rawText: z.string(),
@@ -24,16 +24,31 @@ const feedbackSchema = z.object({
   resolvedAt: z.string().nullable(),
 });
 
-export type FeedbackDto = z.infer<typeof feedbackSchema>;
+/** Single ticket row — same shape as API `Feedback` JSON. */
+export type TicketDto = z.infer<typeof ticketSchema>;
+export type TicketStatus = TicketDto['status'];
+/** @deprecated Use TicketDto */
+export type FeedbackDto = TicketDto;
 
 const listResponseSchema = z.object({
-  items: z.array(feedbackSchema),
+  items: z.array(ticketSchema),
   total: z.number(),
   page: z.number(),
   pageSize: z.number(),
 });
 
-export type FeedbackListResponse = z.infer<typeof listResponseSchema>;
+export type TicketListResponse = z.infer<typeof listResponseSchema>;
+/** @deprecated Use TicketListResponse */
+export type FeedbackListResponse = TicketListResponse;
+
+const similarResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      score: z.number(),
+    }),
+  ),
+});
 
 export type ApiClientOptions = {
   baseUrl: string;
@@ -71,45 +86,78 @@ export function createApiClient(opts: ApiClientOptions) {
     return json as T;
   }
 
+  const ticketsBase = '/api/v1/tickets';
+
   return {
-    submitFeedback(body: { submitterEmail: string; rawText: string }) {
-      return request<{ id: string; status: string }>('/api/v1/feedback', {
+    submitTicket(body: {
+      customer_email: string;
+      description: string;
+      title?: string;
+    }) {
+      return request<{ id: string; status: string }>(ticketsBase, {
         method: 'POST',
         body: JSON.stringify(body),
       });
     },
-    listFeedback(search: string) {
-      return request<FeedbackListResponse>(`/api/v1/feedback${search}`, {
+    listTickets(search: string) {
+      return request<TicketListResponse>(`${ticketsBase}${search}`, {
         method: 'GET',
         schema: listResponseSchema,
       });
     },
-    getFeedback(id: string) {
-      return request<FeedbackDto>(`/api/v1/feedback/${id}`, {
+    getTicket(id: string) {
+      return request<TicketDto>(`${ticketsBase}/${id}`, {
         method: 'GET',
-        schema: feedbackSchema,
+        schema: ticketSchema,
       });
     },
-    claimFeedback(id: string) {
-      return request<FeedbackDto>(`/api/v1/feedback/${id}/claim`, {
-        method: 'POST',
-        schema: feedbackSchema,
+    patchTicketStatus(id: string, body: { status: TicketStatus }) {
+      return request<TicketDto>(`${ticketsBase}/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        schema: ticketSchema,
       });
     },
-    resolveFeedback(id: string) {
-      return request<FeedbackDto>(`/api/v1/feedback/${id}/resolve`, {
-        method: 'POST',
-        schema: feedbackSchema,
-      });
+    getSimilarTickets(id: string) {
+      return request<{ items: { id: string; score: number }[] }>(
+        `${ticketsBase}/${id}/similar`,
+        { method: 'GET', schema: similarResponseSchema },
+      );
     },
-    addComment(id: string, body: { body: string }) {
+    addTicketComment(id: string, body: { body: string }) {
       return request<{ id: string; createdAt: string }>(
-        `/api/v1/feedback/${id}/comments`,
+        `${ticketsBase}/${id}/comments`,
         {
           method: 'POST',
           body: JSON.stringify(body),
         },
       );
+    },
+    /** @deprecated Use submitTicket */
+    submitFeedback(body: { submitterEmail: string; rawText: string }) {
+      const customer_email = body.submitterEmail;
+      const description = body.rawText;
+      return this.submitTicket({ customer_email, description });
+    },
+    /** @deprecated Use listTickets */
+    listFeedback(search: string) {
+      return this.listTickets(search);
+    },
+    /** @deprecated Use getTicket */
+    getFeedback(id: string) {
+      return this.getTicket(id);
+    },
+    /** @deprecated Use patchTicketStatus with { status: 'claimed' } */
+    claimFeedback(id: string) {
+      return this.patchTicketStatus(id, { status: 'claimed' });
+    },
+    /** @deprecated Use patchTicketStatus with { status: 'resolved' } */
+    resolveFeedback(id: string) {
+      return this.patchTicketStatus(id, { status: 'resolved' });
+    },
+    /** @deprecated Use addTicketComment */
+    addComment(id: string, body: { body: string }) {
+      return this.addTicketComment(id, body);
     },
   };
 }

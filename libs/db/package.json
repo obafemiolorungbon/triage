@@ -8,6 +8,9 @@
   "dependencies": {
     "@prisma/client": "^6.19.0"
   },
+  "devDependencies": {
+    "prisma": "^6.19.0"
+  },
   "nx": {
     "name": "db",
     "targets": {

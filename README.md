@@ -7,7 +7,7 @@ Monorepo for customer feedback intake, OpenRouter-powered triage (BullMQ worker)
 | App | Description |
 | --- | --- |
 | `apps/flux` | Next.js App Router — public submit, staff login, dashboard |
-| `apps/backend` | NestJS API — Better Auth (`/api/v1/auth`), feedback CRUD, queues, notifications |
+| `apps/backend` | NestJS API — Better Auth (`/api/v1/auth`), tickets REST (`/api/v1/tickets`), queues, notifications |
 | `libs/shared-types` | Zod schemas / shared types |
 | `libs/db` | Prisma schema & client |
 | `libs/api-client` | Typed REST helper for the web app |

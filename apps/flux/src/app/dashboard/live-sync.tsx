@@ -1,13 +1,13 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { io, type Socket } from 'socket.io-client';
 import { getPublicApiBase } from '../../lib/api-base';
 
 /** Best-effort live refresh when WebSocket can reach the API (same-site / proxied). */
 export function LiveSync() {
-  const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_ENABLE_WS !== 'true') return;
@@ -19,14 +19,17 @@ export function LiveSync() {
         withCredentials: true,
       });
       socket.emit('joinStaff');
-      socket.on('feedback', () => router.refresh());
+      socket.on('feedback', () => {
+        void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        void queryClient.invalidateQueries({ queryKey: ['ticket'] });
+      });
     } catch {
       /* ignore */
     }
     return () => {
       socket?.disconnect();
     };
-  }, [router]);
+  }, [queryClient]);
 
   return null;
 }
