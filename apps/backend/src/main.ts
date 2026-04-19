@@ -6,6 +6,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth';
 import { AppModule } from './app/app.module';
 import { getCorsOrigins } from './config/cors-origins';
+import { mountBullBoard } from './queue/bull-board';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
@@ -19,6 +20,8 @@ async function bootstrap() {
 
   const globalPrefix = 'api/v1';
   app.setGlobalPrefix(globalPrefix);
+
+  mountBullBoard(app, expressApp);
 
   const port = process.env.PORT || 4200;
   await app.listen(port, '0.0.0.0');

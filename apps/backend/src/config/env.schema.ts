@@ -22,6 +22,20 @@ export const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),
+  /**
+   * When true / 1 / yes, mounts Bull Board on `/admin/queues` (same process as
+   * the HTTP API; read-only queue inspection). Prefer off in production unless
+   * protected with `BULL_BOARD_USER` + `BULL_BOARD_PASSWORD`.
+   */
+  BULL_BOARD_ENABLED: z
+    .string()
+    .optional()
+    .transform((s) =>
+      Boolean(s && ['true', '1', 'yes'].includes(s.trim().toLowerCase())),
+    ),
+  /** Optional HTTP Basic user for Bull Board (both user and password required). */
+  BULL_BOARD_USER: z.string().optional().default(''),
+  BULL_BOARD_PASSWORD: z.string().optional().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

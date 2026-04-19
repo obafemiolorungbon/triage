@@ -31,7 +31,7 @@ function useListQueryString() {
     const u = new URLSearchParams(sp.toString());
     const view = u.get('view');
     if (view === 'kanban') {
-      u.set('pageSize', '150');
+      u.set('pageSize', '100');
     } else if (!u.has('pageSize')) {
       u.set('pageSize', '20');
     }
@@ -167,21 +167,19 @@ export function DashboardQueue() {
           <div className="inline-flex items-center p-1 rounded-full surface text-xs font-medium">
             <Link
               href={buildHref({ view: null })}
-              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${
-                view === 'table'
+              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${view === 'table'
                   ? 'bg-paper-100 text-ink-900'
                   : 'text-paper-400 hover:text-paper-100'
-              }`}
+                }`}
             >
               Table
             </Link>
             <Link
               href={buildHref({ view: 'kanban' })}
-              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${
-                view === 'kanban'
+              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${view === 'kanban'
                   ? 'bg-paper-100 text-ink-900'
                   : 'text-paper-400 hover:text-paper-100'
-              }`}
+                }`}
             >
               Kanban
             </Link>
@@ -390,7 +388,7 @@ export function DashboardQueue() {
                           >
                             Open
                             <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
-                              <path d="M2.5 6h7M6 2.5L9.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M2.5 6h7M6 2.5L9.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           </Link>
                         </td>
