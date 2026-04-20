@@ -63,6 +63,14 @@
           "cwd": "apps/backend"
         }
       },
+      "test": {
+        "executor": "@nx/jest:jest",
+        "outputs": ["{workspaceRoot}/coverage/apps/backend"],
+        "options": {
+          "jestConfig": "apps/backend/jest.config.cjs",
+          "passWithNoTests": false
+        }
+      },
       "serve": {
         "continuous": true,
         "executor": "@nx/js:node",
