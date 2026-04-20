@@ -47,7 +47,8 @@ RUN npm install prisma@6 --omit=dev --no-package-lock
 COPY --from=builder /app/docker-prisma-artifact ./node_modules/.prisma
 COPY --from=builder /app/libs/db/prisma ./libs/db/prisma
 COPY docker/backend-entry.sh /entry.sh
-RUN chmod +x /entry.sh
+# Windows clones may have CRLF; strip \r so exec shebang works in Linux.
+RUN sed -i 's/\r$//' /entry.sh && chmod +x /entry.sh
 
 RUN chown -R backend:backend /usr/src/app
 
