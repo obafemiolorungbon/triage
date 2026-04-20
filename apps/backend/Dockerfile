@@ -18,7 +18,14 @@ RUN pnpm install --frozen-lockfile
 # Generate Prisma Client from within libs/db so the CLI resolves
 # @prisma/client locally and skips the pnpm-workspace auto-add path
 # (see prisma/prisma#26658, #5340, #18483).
-RUN cd libs/db && pnpm exec prisma generate --schema=prisma/schema.prisma
+# pnpm may place .prisma under libs/db (not repo-root node_modules); stage a fixed path for the runner COPY.
+RUN cd libs/db && pnpm exec prisma generate --schema=prisma/schema.prisma && \
+    PRISMA_GEN="$(find /app -type d -path '*/node_modules/.prisma' 2>/dev/null | head -n1)" && \
+    if [ -z "$PRISMA_GEN" ] || [ ! -d "$PRISMA_GEN" ]; then \
+      echo "prisma generate did not produce any node_modules/.prisma under /app"; \
+      exit 1; \
+    fi && \
+    cp -r "$PRISMA_GEN" /app/docker-prisma-artifact
 RUN pnpm exec nx run backend:build
 RUN pnpm exec nx run backend:worker:build
 
@@ -37,7 +44,7 @@ RUN node -e "const fs=require('fs');const p='./package.json';const j=JSON.parse(
 RUN npm install --omit=dev
 RUN npm install prisma@6 --omit=dev --no-package-lock
 
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/docker-prisma-artifact ./node_modules/.prisma
 COPY --from=builder /app/libs/db/prisma ./libs/db/prisma
 COPY docker/backend-entry.sh /entry.sh
 RUN chmod +x /entry.sh

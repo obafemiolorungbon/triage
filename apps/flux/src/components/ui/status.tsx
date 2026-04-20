@@ -2,6 +2,15 @@ import type { TicketStatus } from '@triage/api-client';
 
 export type Priority = 'low' | 'med' | 'high' | 'urgent';
 
+/** 6-char #RRGGBB → rgba(..., a) for readable pills on dark UI */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = Number.parseInt(h.slice(0, 2), 16);
+  const g = Number.parseInt(h.slice(2, 4), 16);
+  const b = Number.parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const STATUS_META: Record<TicketStatus, { label: string; color: string }> = {
   new: { label: 'New', color: '#60A5FA' },
   triaged: { label: 'Triaged', color: '#D9FF4D' },
@@ -46,11 +55,10 @@ export function StatusPill({ status }: { status: TicketStatus }) {
   const meta = STATUS_META[status];
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 h-6 text-xs font-medium tracking-tight"
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 h-6 text-xs font-medium tracking-tight text-paper-100"
       style={{
-        background: `${meta.color}14`,
-        color: meta.color,
-        boxShadow: `inset 0 0 0 1px ${meta.color}33`,
+        background: hexToRgba(meta.color, 0.2),
+        boxShadow: `inset 0 0 0 1px ${hexToRgba(meta.color, 0.42)}`,
       }}
     >
       <StatusDot status={status} size={6} />
@@ -66,11 +74,10 @@ export function PriorityPill({ priority }: { priority: Priority | null | undefin
   const meta = PRIORITY_META[priority];
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 h-6 text-xs font-medium tracking-tight"
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 h-6 text-xs font-medium tracking-tight text-paper-100"
       style={{
-        background: `${meta.color}14`,
-        color: meta.color,
-        boxShadow: `inset 0 0 0 1px ${meta.color}33`,
+        background: hexToRgba(meta.color, 0.2),
+        boxShadow: `inset 0 0 0 1px ${hexToRgba(meta.color, 0.42)}`,
       }}
     >
       <span className="relative flex w-1.5 h-1.5">
