@@ -218,10 +218,62 @@ Then open http://localhost:3000. You still need to run the admin-seed command fr
 
 ---
 
+## Reset from scratch (like a fresh clone)
+
+Use this when you want a clean database, no `node_modules`, and no local build caches.
+
+1. **Stop Docker and wipe Postgres data** (named volume `pgdata`):
+
+   ```bash
+   pnpm clean:docker
+   ```
+
+2. **Remove dependencies** (recommended on Windows; avoids `git clean` path-length issues with pnpm):
+
+   ```bash
+   pnpm clean:modules
+   ```
+
+3. **Clear Nx cache** (optional but nice):
+
+   ```bash
+   pnpm clean:nx
+   ```
+
+4. **Remove other generated / ignored files** (`dist`, `.next`, `.env`, coverage, etc.):
+
+   ```bash
+   pnpm clean:git
+   ```
+
+   On Windows, if you see many `Filename too long` warnings, run `pnpm clean:modules` again, then re-run `pnpm clean:git` or delete leftover folders under `node_modules` manually.
+
+5. **New env file** (if `.env` was removed):
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   **Windows PowerShell:** `Copy-Item .env.example .env`
+
+6. **Bring the stack back** (Docker):
+
+   ```bash
+   pnpm docker:up
+   ```
+
+7. **Create an admin** once the API is healthy ([Step 10](#10-create-your-first-admin-user)).
+
+---
+
 ## Common Scripts
 
 | Command | Purpose |
 | --- | --- |
+| `pnpm clean:docker` | `docker compose down -v` — stop stack and delete DB volume |
+| `pnpm clean:modules` | Delete root `node_modules` (uses `rimraf` via `pnpm dlx`) |
+| `pnpm clean:git` | `git clean -fdX` — remove gitignored artifacts |
+| `pnpm clean:nx` | `nx reset` — clear Nx cache |
 | `pnpm db:migrate` | Create/apply a new Prisma migration locally |
 | `pnpm db:studio` | Open Prisma Studio to browse the DB |
 | `pnpm db:seed` | Load demo feedback |
