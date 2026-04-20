@@ -33,3 +33,5 @@ Here are list of things I would implement if a complete product was a requiremen
 1. Notification via email: Currently, we have a third party integration to send emails for urgent triaged tickets and for when tickets are resolved. I will complete this end to end in a full product.
 
 2. Analytics: There will be analytics for better view of daily tickets and numbers required by agents.
+
+Although quite straight forward, the information on how to run the repo corectly is in how-to-run.md
