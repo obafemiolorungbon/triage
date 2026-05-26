@@ -5,8 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
-import { PriorityPill, StatusPill } from '../../../components/ui/status';
-import type { Priority } from '../../../components/ui/status';
+import { EscalationPill, StatusPill } from '../../../components/ui/status';
 import { TicketActions } from './ticket-actions';
 
 export function TicketDetailView({ id }: { id: string }) {
@@ -72,12 +71,18 @@ export function TicketDetailView({ id }: { id: string }) {
           <header>
             <div className="flex items-center gap-2 mb-4 flex-wrap">
               <StatusPill status={f.status} />
-              <PriorityPill priority={f.priority as Priority | null} />
+              <EscalationPill tier={f.escalationTier} />
               {f.category && (
                 <span className="pill">{f.category}</span>
               )}
               {f.sentiment && (
                 <span className="pill">sentiment: {f.sentiment}</span>
+              )}
+              {f.submissionType && (
+                <span className="pill">type: {f.submissionType}</span>
+              )}
+              {f.severity && (
+                <span className="pill">severity: {f.severity}</span>
               )}
               {f.knowledgeGap && (
                 <span className="pill pill-accent">knowledge gap</span>
@@ -145,9 +150,24 @@ export function TicketDetailView({ id }: { id: string }) {
             <RawCollapse raw={f.rawText} />
           </section>
 
+          {(f.attachments ?? []).length > 0 && (
+            <section>
+              <SectionHead num="02" label="Images" />
+              <div className="mt-4 grid sm:grid-cols-2 gap-4">
+                {(f.attachments ?? []).map((attachment) => (
+                  <AttachmentPreview
+                    key={attachment.id}
+                    ticketId={f.id}
+                    attachment={attachment}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Similar tickets */}
           <section>
-            <SectionHead num="02" label="Similar" />
+            <SectionHead num={(f.attachments ?? []).length > 0 ? '03' : '02'} label="Similar" />
             {similarQuery.isLoading ? (
               <div className="mt-4 flex items-center gap-2 text-paper-500 text-sm">
                 <span className="spinner !w-3.5 !h-3.5" />
@@ -214,9 +234,19 @@ export function TicketDetailView({ id }: { id: string }) {
               <dl className="mt-4 space-y-3 text-sm">
                 <Fact label="Status" value={<StatusPill status={f.status} />} />
                 <Fact
-                  label="Priority"
-                  value={<PriorityPill priority={f.priority as Priority | null} />}
+                  label="Escalation"
+                  value={<EscalationPill tier={f.escalationTier} />}
                 />
+                {f.escalationReason && (
+                  <Fact
+                    label="Reason"
+                    value={
+                      <span className="text-xs text-paper-300 text-right">
+                        {f.escalationReason}
+                      </span>
+                    }
+                  />
+                )}
                 <Fact
                   label="Sentiment"
                   value={
@@ -252,6 +282,32 @@ export function TicketDetailView({ id }: { id: string }) {
                   }
                 />
               </dl>
+            </div>
+
+            <div className="surface rounded-xl p-5">
+              <SectionHead num="-" label="External" />
+              <div className="mt-4 space-y-2">
+                {(f.externalIssueLinks ?? []).length === 0 ? (
+                  <p className="text-sm text-paper-500">No linked issues</p>
+                ) : (
+                  (f.externalIssueLinks ?? []).map((link) => (
+                    <a
+                      key={link.id}
+                      href={link.externalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between rounded-lg px-3 py-2 bg-paper-100/[0.03] hover:bg-paper-100/[0.06] transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm text-paper-100 capitalize">
+                        {link.provider}
+                      </span>
+                      <span className="text-2xs font-mono text-paper-500">
+                        {link.externalKey ?? link.externalId.slice(0, 8)} / {link.creationMode}
+                      </span>
+                    </a>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </aside>
@@ -290,6 +346,51 @@ function SimilarityMeter({ score }: { score: number }) {
         style={{ width: `${pct * 100}%`, boxShadow: '0 0 8px rgba(217,255,77,0.5)' }}
       />
     </div>
+  );
+}
+
+function AttachmentPreview({
+  ticketId,
+  attachment,
+}: {
+  ticketId: string;
+  attachment: NonNullable<TicketDto['attachments']>[number];
+}) {
+  const client = browserTicketsClient();
+  const urlQuery = useQuery({
+    queryKey: ['ticket', ticketId, 'attachment-url', attachment.id],
+    queryFn: () => client.getTicketAttachmentUrl(ticketId, attachment.id),
+  });
+  return (
+    <a
+      href={urlQuery.data?.url ?? '#'}
+      target="_blank"
+      rel="noreferrer"
+      className="group overflow-hidden rounded-xl bg-paper-100/[0.04] ring-1 ring-paper-100/10"
+    >
+      <div className="aspect-video bg-ink-800">
+        {urlQuery.data?.url ? (
+          // Signed URLs are short-lived and generated per authenticated viewer.
+          <img
+            src={urlQuery.data.url}
+            alt={attachment.fileName ?? 'Feedback attachment'}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+          />
+        ) : (
+          <div className="h-full grid place-items-center">
+            <span className="spinner" />
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <span className="min-w-0 truncate text-sm text-paper-200">
+          {attachment.fileName ?? 'Image'}
+        </span>
+        <span className="text-2xs font-mono text-paper-500">
+          {Math.round(attachment.sizeBytes / 1024)}KB
+        </span>
+      </div>
+    </a>
   );
 }
 

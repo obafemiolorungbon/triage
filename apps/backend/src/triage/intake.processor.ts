@@ -1,4 +1,4 @@
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { AiService } from '../ai/ai.service';
@@ -19,14 +19,17 @@ import {
 @Processor(INTAKE_QUEUE)
 export class IntakeProcessor extends WorkerHost {
   private readonly log = new Logger(IntakeProcessor.name);
+  private readonly triageQueue: Queue<TriageJobData>;
+  private readonly prisma: PrismaService;
+  private readonly ai: AiService;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly ai: AiService,
-    @InjectQueue(TRIAGE_QUEUE)
-    private readonly triageQueue: Queue<TriageJobData>,
-  ) {
+  constructor() {
     super();
+    this.prisma = new PrismaService();
+    this.ai = new AiService();
+    this.triageQueue = new Queue<TriageJobData>(TRIAGE_QUEUE, {
+      connection: { url: process.env.REDIS_URL ?? 'redis://localhost:6379' },
+    });
   }
 
   async process(job: Job<IntakeJobData>): Promise<void> {

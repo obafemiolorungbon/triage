@@ -11,6 +11,7 @@ export const envSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional().default(''),
   OPENROUTER_MODEL_FILTER: z.string().default('openai/gpt-4o-mini'),
   OPENROUTER_MODEL_MAIN: z.string().default('openai/gpt-4o'),
+  OPENROUTER_MODEL_EMBEDDING: z.string().default('openai/text-embedding-3-small'),
   /** Short description of the product domain used to ground the triage prompt. */
   OPENROUTER_INDUSTRY_CONTEXT: z.string().optional().default(''),
   BETTER_AUTH_SECRET: z.string().min(32),
@@ -22,6 +23,24 @@ export const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),
+  LINEAR_API_KEY: z.string().optional().default(''),
+  LINEAR_TEAM_ID: z.string().optional().default(''),
+  LINEAR_PROJECT_ID: z.string().optional().default(''),
+  JIRA_BASE_URL: z.string().optional().default(''),
+  JIRA_EMAIL: z.string().optional().default(''),
+  JIRA_API_TOKEN: z.string().optional().default(''),
+  JIRA_PROJECT_KEY: z.string().optional().default(''),
+  JIRA_ISSUE_TYPE: z.string().optional().default('Task'),
+  S3_ENDPOINT: z.string().optional().default('http://localhost:9000'),
+  S3_REGION: z.string().optional().default('us-east-1'),
+  S3_ACCESS_KEY_ID: z.string().optional().default('minioadmin'),
+  S3_SECRET_ACCESS_KEY: z.string().optional().default('minioadmin'),
+  S3_BUCKET: z.string().optional().default('triage-uploads'),
+  S3_FORCE_PATH_STYLE: z
+    .string()
+    .optional()
+    .default('true')
+    .transform((s) => ['true', '1', 'yes'].includes(s.trim().toLowerCase())),
   /**
    * When true / 1 / yes, mounts Bull Board on `/admin/queues` (same process as
    * the HTTP API; read-only queue inspection). Prefer off in production unless

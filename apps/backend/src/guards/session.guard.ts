@@ -29,7 +29,7 @@ export class SessionGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     const session = await auth.api.getSession({
-      headers: req.headers as HeadersInit,
+      headers: req.headers as never,
     });
     if (!session) {
       throw new UnauthorizedException();

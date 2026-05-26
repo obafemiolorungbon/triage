@@ -11,7 +11,7 @@
     "target": "es2021"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.spec.ts", "src/scripts/**/*"],
+  "exclude": ["src/**/*.spec.ts", "src/scripts/**/*", "src/test/**/*"],
   "references": [
     {
       "path": "../../libs/shared-types"

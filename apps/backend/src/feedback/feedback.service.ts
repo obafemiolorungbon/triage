@@ -10,14 +10,24 @@ import type { Feedback, FeedbackStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import {
   createTicketBodySchema,
+  externalIssueCreateBodySchema,
   feedbackListQuerySchema,
   addCommentBodySchema,
   patchTicketBodySchema,
+  widgetFeedbackBodySchema,
+  type WidgetAttachmentSubmission,
+  type WidgetFeedbackBody,
+  type WidgetSurveySubmission,
+  type WidgetSubmissionType,
+  type FeedbackSeverity,
 } from '@triage/shared-types';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { INTAKE_QUEUE, type IntakeJobData } from '../queue/triage.constants';
 import type { AuthedRequest } from '../guards/session.guard';
+import { EscalationService } from '../escalation/escalation.service';
+import { ExternalIssuesService } from '../external-issues/external-issues.service';
+import { StorageService } from '../storage/storage.service';
 
 /** Agent-allowed status transitions when not using dedicated claim/resolve paths. */
 const AGENT_TRANSITIONS: Record<FeedbackStatus, FeedbackStatus[]> = {
@@ -35,6 +45,9 @@ export class FeedbackService {
     private readonly prisma: PrismaService,
     @InjectQueue(INTAKE_QUEUE) private readonly intakeQueue: Queue<IntakeJobData>,
     private readonly events: EventsGateway,
+    private readonly escalation: EscalationService,
+    private readonly externalIssues: ExternalIssuesService,
+    private readonly storage: StorageService,
   ) {}
 
   async createTicket(body: unknown) {
@@ -46,15 +59,56 @@ export class FeedbackService {
     const rawText = title?.trim()
       ? `${title.trim()}\n\n${description}`
       : description;
+    const evaluated = await this.escalation.evaluate({
+      metadata: parsed.data.metadata,
+      userContext: parsed.data.userContext,
+    });
     const fb = await this.prisma.client.feedback.create({
       data: {
         submitterEmail: customer_email,
+        ...(parsed.data.widgetId
+          ? { widget: { connect: { id: parsed.data.widgetId } } }
+          : {}),
+        submissionType: parsed.data.submissionType,
+        severity: parsed.data.severity,
         rawText,
+        userContext: (parsed.data.userContext ?? undefined) as Prisma.InputJsonValue,
+        metadata: (parsed.data.metadata ?? undefined) as Prisma.InputJsonValue,
+        sourceUrl: parsed.data.source?.url,
+        sourceTitle: parsed.data.source?.title,
+        escalationTier: evaluated.escalationTier,
+        escalationReason: evaluated.escalationReason,
         status: 'new',
       },
     });
     await this.intakeQueue.add('intake', { feedbackId: fb.id });
     return { id: fb.id, status: fb.status };
+  }
+
+  async createWidgetTicket(body: unknown, widgetId: string) {
+    const parsed = widgetFeedbackBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    const routed = await this.routeWidgetFields(widgetId, parsed.data);
+    const email = this.pickEmail(routed.user) ?? 'anonymous@widget.local';
+    return this.createTicket({
+      customer_email: email,
+      title: routed.title,
+      description: routed.message,
+      widgetId,
+      submissionType: routed.submissionType,
+      severity: routed.severity,
+      userContext: routed.user,
+      metadata: routed.metadata,
+      source: parsed.data.source,
+    }).then(async (ticket) => {
+      await this.createAttachments(ticket.id, widgetId, parsed.data.attachments);
+      if (parsed.data.survey) {
+        await this.createSurvey(ticket.id, widgetId, parsed.data.survey);
+      }
+      return ticket;
+    });
   }
 
   async list(query: Record<string, string | string[] | undefined>, userId: string) {
@@ -71,7 +125,7 @@ export class FeedbackService {
       page,
       pageSize,
       status,
-      priority,
+      escalationTier,
       category,
       q: search,
       assignedMe,
@@ -80,7 +134,7 @@ export class FeedbackService {
     } = q.data;
     const where: Prisma.FeedbackWhereInput = {};
     if (status) where.status = status;
-    if (priority) where.priority = priority;
+    if (escalationTier) where.escalationTier = escalationTier;
     if (category) where.category = category;
     if (noiseOnly) where.isNoise = true;
     if (knowledgeOnly) where.knowledgeGap = true;
@@ -105,9 +159,25 @@ export class FeedbackService {
   }
 
   async getById(id: string) {
-    const fb = await this.prisma.client.feedback.findUnique({ where: { id } });
+    const fb = await this.prisma.client.feedback.findUnique({
+      where: { id },
+      include: { externalIssueLinks: true, attachments: true },
+    });
     if (!fb) throw new NotFoundException();
     return fb;
+  }
+
+  async createAttachmentDownloadUrl(feedbackId: string, attachmentId: string) {
+    const attachment = await this.prisma.client.attachment.findFirst({
+      where: { id: attachmentId, feedbackId },
+    });
+    if (!attachment) throw new NotFoundException('Attachment not found');
+    return {
+      url: await this.storage.createDownloadUrl(
+        attachment.storageKey,
+        attachment.fileName,
+      ),
+    };
   }
 
   async updateStatus(id: string, body: unknown, req: AuthedRequest) {
@@ -135,7 +205,7 @@ export class FeedbackService {
       if (fb.status === 'resolved' || fb.status === 'rejected') {
         throw new BadRequestException('Cannot change status of a closed ticket');
       }
-      const allowed = AGENT_TRANSITIONS[fb.status];
+      const allowed = AGENT_TRANSITIONS[fb.status as FeedbackStatus];
       if (!allowed.includes(next)) {
         throw new BadRequestException(
           `Cannot move ticket from "${fb.status}" to "${next}"`,
@@ -255,5 +325,139 @@ export class FeedbackService {
 
   async similar(_id: string) {
     return { items: [] as { id: string; score: number }[] };
+  }
+
+  async createExternalIssue(id: string, body: unknown, req: AuthedRequest) {
+    const parsed = externalIssueCreateBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    await this.getById(id);
+    const link = await this.externalIssues.createForFeedback({
+      feedbackId: id,
+      provider: parsed.data.provider,
+      creationMode: 'manual',
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        actorId: req.session?.user.id,
+        feedbackId: id,
+        action: `external_issue_${parsed.data.provider}`,
+        after: link as object,
+      },
+    });
+    this.events.emitFeedbackEvent({ type: 'updated', feedbackId: id });
+    return { link };
+  }
+
+  private pickEmail(user: Record<string, unknown> | undefined) {
+    const value = user?.email ?? user?.customer_email;
+    if (typeof value !== 'string') return null;
+    return value.includes('@') ? value : null;
+  }
+
+  private async createAttachments(
+    feedbackId: string,
+    widgetId: string,
+    attachments: WidgetAttachmentSubmission[],
+  ) {
+    if (attachments.length === 0) return;
+    await this.prisma.client.attachment.createMany({
+      data: attachments.map((attachment) => ({
+        feedbackId,
+        widgetId,
+        kind: 'image',
+        mimeType: attachment.mimeType,
+        fileName: attachment.fileName,
+        sizeBytes: attachment.sizeBytes,
+        storageKey: attachment.storageKey,
+        width: attachment.width,
+        height: attachment.height,
+      })),
+    });
+  }
+
+  private async createSurvey(
+    feedbackId: string,
+    widgetId: string,
+    survey: WidgetSurveySubmission,
+  ) {
+    await this.prisma.client.survey.create({
+      data: {
+        feedbackId,
+        widgetId,
+        score: survey.score,
+        scale: survey.scale,
+        comment: survey.comment,
+      },
+    });
+  }
+
+  private async routeWidgetFields(widgetId: string, data: WidgetFeedbackBody) {
+    const widget = await this.prisma.client.widget.findUnique({
+      where: { id: widgetId },
+      select: {
+        enabledTypes: true,
+        fields: { orderBy: { order: 'asc' } },
+      },
+    });
+    const fields = data.fields ?? {};
+    const user: Record<string, unknown> = { ...(data.user ?? {}) };
+    const metadata: Record<string, unknown> = { ...(data.metadata ?? {}) };
+    const submissionType =
+      data.type ?? widget?.enabledTypes[0] ?? ('bug' as WidgetSubmissionType);
+    let title = data.title;
+    let message = data.message;
+    let severity: FeedbackSeverity | undefined;
+
+    if (widget && !widget.enabledTypes.includes(submissionType)) {
+      throw new BadRequestException('Submission type is not enabled for this widget');
+    }
+
+    for (const field of widget?.fields ?? []) {
+      const value = fields[field.key];
+      if (field.required && this.isEmptyFieldValue(value)) {
+        throw new BadRequestException(`${field.label} is required`);
+      }
+      if (this.isEmptyFieldValue(value)) continue;
+      if (field.target === 'title') title = String(value);
+      if (field.target === 'message') message = String(value);
+      if (field.target === 'user') user[field.key] = value;
+      if (field.target === 'metadata') metadata[field.key] = value;
+      if (field.target === 'category') metadata.category = String(value);
+      if (field.target === 'severity') {
+        const next = String(value).toLowerCase();
+        if (['low', 'medium', 'high', 'critical'].includes(next)) {
+          severity = next as FeedbackSeverity;
+          metadata.severity = severity;
+        }
+      }
+    }
+
+    metadata.submissionType = submissionType;
+    if (!severity && typeof metadata.severity === 'string') {
+      const value = metadata.severity.toLowerCase();
+      if (['low', 'medium', 'high', 'critical'].includes(value)) {
+        severity = value as FeedbackSeverity;
+      }
+    }
+    if (!message || message.trim().length < 10) {
+      throw new BadRequestException('Feedback must be at least 10 characters');
+    }
+    return {
+      title,
+      message,
+      user,
+      metadata,
+      submissionType,
+      severity,
+    };
+  }
+
+  private isEmptyFieldValue(value: unknown) {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
   }
 }

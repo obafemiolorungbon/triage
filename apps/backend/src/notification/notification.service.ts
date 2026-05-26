@@ -1,20 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
-import type { Env } from '../config/env.schema';
 
 @Injectable()
 export class NotificationService {
   private readonly log = new Logger(NotificationService.name);
   private readonly resend: Resend | null;
 
-  constructor(private readonly config: ConfigService<Env, true>) {
-    const key = config.get('RESEND_API_KEY', { infer: true });
+  constructor() {
+    const key = process.env.RESEND_API_KEY;
     this.resend = key ? new Resend(key) : null;
   }
 
   async sendPlain(params: { to: string; subject: string; text: string }) {
-    const from = this.config.get('RESEND_FROM', { infer: true });
+    const from = process.env.RESEND_FROM;
     if (!this.resend || !from) {
       this.log.debug('Resend not configured; skipping email');
       return;
@@ -31,9 +29,9 @@ export class NotificationService {
     to: string;
     feedbackId: string;
     category: string | null;
-    priority: string | null;
+    escalationTier: string | null;
   }) {
-    const from = this.config.get('RESEND_FROM', { infer: true });
+    const from = process.env.RESEND_FROM;
     if (!this.resend || !from) {
       this.log.debug('Resend not configured; skipping email');
       return;
@@ -44,8 +42,8 @@ export class NotificationService {
       subject: 'We received your feedback',
       html: `<p>Thanks for your submission. Our team is reviewing it.</p>
         <p><strong>Reference:</strong> ${params.feedbackId}</p>
-        <p><strong>Category:</strong> ${params.category ?? '—'}</p>
-        <p><strong>Priority:</strong> ${params.priority ?? '—'}</p>`,
+        <p><strong>Category:</strong> ${params.category ?? '-'}</p>
+        <p><strong>Escalation:</strong> ${params.escalationTier ?? 'none'}</p>`,
     });
   }
 
@@ -54,7 +52,7 @@ export class NotificationService {
     feedbackId: string;
     summary: string;
   }) {
-    const from = this.config.get('RESEND_FROM', { infer: true });
+    const from = process.env.RESEND_FROM;
     if (!this.resend || !from) {
       this.log.debug('Resend not configured; skipping agent email');
       return;

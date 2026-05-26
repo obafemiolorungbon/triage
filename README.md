@@ -1,53 +1,228 @@
-# Smart Triage (Nx + NestJS + Next.js)
+# Triage
 
-Monorepo for customer feedback intake, OpenRouter-powered triage (BullMQ worker), and a staff dashboard.
+Self-hosted feedback intake for product and support teams.
+
+Triage gives companies an embeddable website/app widget, AI-assisted feedback
+classification, metadata-based escalation, an internal support Kanban, and
+manual or automatic handoff to Linear or Jira.
 
 ## Apps
 
 | App | Description |
 | --- | --- |
-| `apps/flux` | Next.js App Router — public submit, staff login, dashboard |
-| `apps/backend` | NestJS API — Better Auth (`/api/v1/auth`), tickets REST (`/api/v1/tickets`), queues, notifications |
-| `libs/shared-types` | Zod schemas / shared types |
-| `libs/db` | Prisma schema & client |
+| `apps/flux` | Internal Next.js app: widget iframe, staff login, dashboard, settings |
+| `apps/site` | Separate marketing site for the open-source product |
+| `apps/playground` | Demo app showing the widget on a marketing page and inside a web app |
+| `apps/backend` | NestJS API: auth, widget intake, tickets, queues, settings, integrations |
+| `libs/shared-types` | Zod schemas and shared API types |
+| `libs/db` | Prisma schema, migrations, and client |
 | `libs/api-client` | Typed REST helper for the web app |
 
-## Local development
+## Core Flow
 
-1. Copy [`.env.example`](./.env.example) to `.env` and fill values (Postgres + Redis required).
-2. `pnpm install`
-3. `pnpm exec prisma migrate dev --schema=libs/db/prisma/schema.prisma`
-4. `pnpm exec nx run backend:serve` (terminal 1)
-5. `pnpm exec nx run @triage/flux:dev` (terminal 2)
+1. A company embeds `/embed.js` on any site or web app.
+2. The script opens a sandboxed iframe widget from `apps/flux`.
+3. Customers submit feedback with optional user and metadata context.
+4. The backend stores the feedback, runs spam detection, and queues AI triage.
+5. Company context from dashboard settings is included in the AI prompt.
+6. Metadata rules assign an escalation tier: `none`, `watch`, `expedite`, or `critical`.
+7. Agents work feedback in the internal dashboard.
+8. Agents can manually create Linear/Jira issues, and critical feedback can auto-create an external issue when enabled.
 
-Create the first admin (API must be running):
+## Local Development
+
+1. Copy `.env.example` to `.env` and fill values.
+2. Install dependencies:
+
+```bash
+pnpm install
+```
+
+3. Start Postgres with pgvector, Redis, and MinIO:
+
+```bash
+docker compose up -d postgres redis minio minio-init
+```
+
+4. Apply migrations:
+
+```bash
+pnpm db:migrate
+```
+
+5. Start the API, worker, dashboard, and marketing site:
+
+```bash
+pnpm exec nx run backend:serve
+pnpm exec tsx apps/backend/src/worker-bootstrap.ts
+pnpm exec nx run @triage/flux:dev
+pnpm exec nx run @triage/site:dev --port=3001
+pnpm exec nx run @triage/playground:dev --port=3002
+```
+
+Create the first admin while the API is running:
 
 ```bash
 ADMIN_EMAIL=you@corp.com ADMIN_PASSWORD='YourSecurePass' API_URL=http://localhost:4200 pnpm seed:admin
 ```
 
-## Docker (full stack)
+PowerShell:
+
+```powershell
+$env:ADMIN_EMAIL="you@corp.com"; $env:ADMIN_PASSWORD="YourSecurePass"; $env:API_URL="http://localhost:4200"; pnpm seed:admin
+```
+
+## URLs
+
+| URL | Purpose |
+| --- | --- |
+| http://localhost:3000 | Internal app |
+| http://localhost:3000/dashboard | Staff dashboard |
+| http://localhost:3000/dashboard/settings | Company, escalation, and integration settings |
+| http://localhost:3000/dashboard/widgets | Widget keys, branding, fields, and image attachment limits |
+| http://localhost:3000/embed.js | Embeddable widget script |
+| http://localhost:3001 | Marketing site |
+| http://localhost:3002 | Widget playground |
+| http://localhost:4200/api/v1 | Backend API |
+
+## Widget Embed
+
+```html
+<script
+  src="http://localhost:3000/embed.js"
+  data-widget-key="local-dev-widget"
+  data-position="bottom-right"
+  async
+></script>
+
+<script>
+  window.TriageWidget?.identify(
+    { email: "customer@example.com", name: "Ada", accountId: "acct_123" },
+    { plan: "enterprise", environment: "production", affectedUsers: 42 }
+  );
+</script>
+```
+
+## Image Attachments
+
+The widget supports direct-to-S3 image uploads using presigned PUT URLs. Local
+development uses MinIO from `docker-compose.yml`; production can point the same
+environment variables at S3, R2, B2, Tigris, or another S3-compatible store.
+
+```env
+S3_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_BUCKET=triage-uploads
+S3_FORCE_PATH_STYLE=true
+```
+
+Per-widget limits live in `/dashboard/widgets/:id`: max image count, max image
+size, and allowed image MIME types. MVP supports image attachments only.
+
+## Widget Forms
+
+Each widget has its own form configuration in `/dashboard/widgets/:id`.
+Admins can enable submission types (`bug`, `idea`, `question`, `praise`,
+`custom`), configure field rows, route fields to user context, metadata, title,
+message, category, or severity, and enable an optional CSAT/NPS/thumbs survey.
+
+The widget stores in-progress drafts in browser `localStorage`, keyed by widget
+and submission type, and clears the draft after successful submission.
+
+## Targeting, Triggers, And Variants
+
+Each widget can now store page rules, audience rules, trigger config, inline
+embed support, and weighted variants. The embed script evaluates those settings
+on the host page before showing the launcher.
+
+```json
+{
+  "include": [{ "kind": "urlPath", "op": "startsWith", "value": "/docs" }],
+  "exclude": [{ "kind": "urlPath", "op": "startsWith", "value": "/pricing" }]
+}
+```
+
+```json
+{ "mode": "time_on_page", "seconds": 15 }
+```
+
+Inline embeds use the same script:
+
+```html
+<div data-triage-inline data-widget-key="local-dev-widget" data-height="620px"></div>
+```
+
+## Widget Branding And Theming
+
+Each widget has its own theme in `/dashboard/widgets/:id`. Admins can configure
+surface/text colors, launcher label, position, border radius, shadow, logo URL,
+font family, dark-mode behavior, and whether the widget shows the powered-by
+line. The public config endpoint returns the theme, `/widget` applies it through
+CSS variables, and `/embed.js` uses the same values for the host-page launcher
+and iframe panel.
+
+`data-position` on the embed script still works as an override; otherwise the
+widget uses the saved dashboard position, including bottom, top, centered, and
+side-tab launcher placements.
+
+## Knowledge Base Deflection
+
+Admins can publish Markdown support articles in `/dashboard/kb`. Articles are
+chunked by H2/H3 sections and indexed for widget search. Local and production
+Postgres use the `pgvector/pgvector:pg16` image so semantic search works without
+separate vector infrastructure.
+
+```env
+OPENROUTER_MODEL_EMBEDDING=openai/text-embedding-3-small
+```
+
+When `OPENROUTER_API_KEY` is not configured, the widget still uses a simple
+lexical fallback so local development remains usable.
+
+## External Issues
+
+Linear and Jira credentials are environment-driven in v1.
+
+```env
+LINEAR_API_KEY=
+LINEAR_TEAM_ID=
+LINEAR_PROJECT_ID=
+
+JIRA_BASE_URL=
+JIRA_EMAIL=
+JIRA_API_TOKEN=
+JIRA_PROJECT_KEY=
+JIRA_ISSUE_TYPE=Task
+```
+
+Admins can enable automatic external issue creation for `critical` feedback in
+dashboard settings. Agents can always create Linear/Jira issues manually from a
+ticket detail page when the provider is configured.
+
+## Docker
 
 ```bash
 docker compose up --build
 ```
 
-- **Flux**: http://localhost:3000  
-- **API**: http://localhost:4200  
-- Set `OPENROUTER_API_KEY` in your environment (or leave unset for fallback triage in the worker).
-
-## Deploy
-
-- [Vercel (Next)](./deploy/VERCEL.md)  
-- [Railway (API + worker + DB)](./deploy/RAILWAY.md)
+- Internal app: http://localhost:3000
+- Marketing site: http://localhost:3001
+- Widget playground: http://localhost:3002
+- API: http://localhost:4200
 
 ## Scripts
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm build` | Build backend + flux |
-| `pnpm db:migrate` | Prisma migrate dev |
-| `pnpm db:migrate:deploy` | Prisma migrate deploy (CI/prod) |
+| `pnpm build` | Build backend, dashboard, and marketing site |
+| `pnpm build:backend` | Build the NestJS API |
+| `pnpm build:flux` | Build the internal Next.js app |
+| `pnpm build:site` | Build the marketing Next.js app |
+| `pnpm build:playground` | Build the widget playground app |
+| `pnpm db:migrate` | Run Prisma migrate dev |
+| `pnpm db:migrate:deploy` | Run Prisma migrate deploy |
 | `pnpm db:seed` | Seed demo feedback |
-| `pnpm seed:admin` | Create/promote admin user (see above) |
-| `pnpm docker:up` | `docker compose up --build` |
+| `pnpm seed:admin` | Create or promote an admin user |
+| `pnpm docker:up` | Run `docker compose up --build` |

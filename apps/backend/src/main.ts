@@ -15,8 +15,30 @@ async function bootstrap() {
 
   const expressApp = app.getHttpAdapter().getInstance();
   expressApp.use('/api/v1/auth', toNodeHandler(auth));
-  expressApp.use(express.json({ limit: '2mb' }));
+  expressApp.use(express.json({ limit: '10mb' }));
   expressApp.use(express.urlencoded({ extended: true }));
+  expressApp.use(
+    (
+      err: unknown,
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (
+        err &&
+        typeof err === 'object' &&
+        'type' in err &&
+        err.type === 'entity.too.large'
+      ) {
+        res.status(413).json({
+          statusCode: 413,
+          message: 'JSON request body is too large. Limit is 10mb.',
+        });
+        return;
+      }
+      next(err);
+    },
+  );
 
   const globalPrefix = 'api/v1';
   app.setGlobalPrefix(globalPrefix);

@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  EscalationTier,
   TicketDto,
   TicketListResponse,
   TicketStatus,
@@ -10,8 +11,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
-import { PriorityPill, StatusDot, StatusPill } from '../../components/ui/status';
-import type { Priority } from '../../components/ui/status';
+import { EscalationPill, StatusDot, StatusPill } from '../../components/ui/status';
 import { KanbanBoard } from './kanban-board';
 
 const STATUSES: TicketStatus[] = [
@@ -23,7 +23,7 @@ const STATUSES: TicketStatus[] = [
   'rejected',
 ];
 
-const PRIORITIES: Priority[] = ['urgent', 'high', 'med', 'low'];
+const ESCALATION_TIERS: EscalationTier[] = ['critical', 'expedite', 'watch', 'none'];
 
 function useListQueryString() {
   const sp = useSearchParams();
@@ -78,7 +78,7 @@ function StatusCell({
     <div className="relative inline-flex items-center">
       <StatusPill status={ticket.status} />
       <select
-        className="absolute inset-0 opacity-0 cursor-pointer"
+        className="absolute inset-0 cursor-pointer opacity-0"
         value={ticket.status}
         disabled={mutation.isPending}
         aria-label="Change status"
@@ -133,10 +133,10 @@ export function DashboardQueue() {
 
   const q = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
-  const priority = sp.get('priority') ?? '';
+  const escalationTier = sp.get('escalationTier') ?? '';
   const noiseOnly = sp.get('noiseOnly') === 'true';
   const knowledgeOnly = sp.get('knowledgeOnly') === 'true';
-  const hasFilters = Boolean(q || status || priority || noiseOnly || knowledgeOnly);
+  const hasFilters = Boolean(q || status || escalationTier || noiseOnly || knowledgeOnly);
 
   const countsByStatus = useMemo(() => {
     const c: Partial<Record<TicketStatus, number>> = {};
@@ -147,91 +147,79 @@ export function DashboardQueue() {
   }, [data]);
 
   return (
-    <div className="space-y-6">
-      {/* ==== Header ==== */}
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+    <div className="space-y-7">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-4xl md:text-5xl tracking-tightest text-paper-50 font-medium">
+          <h1 className="text-4xl font-semibold tracking-tightest text-paper-50 md:text-5xl">
             Tickets
           </h1>
-          <p className="mt-2 text-sm text-paper-400 font-mono tabular-nums">
+          <p className="mt-2 font-mono text-sm tabular-nums text-paper-400">
             {data
-              ? `${data.total} · p${data.page} · ${data.pageSize}/page`
+              ? `${data.total} total, page ${data.page}, ${data.pageSize} per page`
               : isLoading
-                ? '…'
-                : '—'}
+                ? 'Loading queue'
+                : 'No queue data'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center p-1 rounded-full surface text-xs font-medium">
-            <Link
-              href={buildHref({ view: null })}
-              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${view === 'table'
-                  ? 'bg-paper-100 text-ink-900'
-                  : 'text-paper-400 hover:text-paper-100'
-                }`}
-            >
-              Table
-            </Link>
-            <Link
-              href={buildHref({ view: 'kanban' })}
-              className={`h-8 px-4 inline-flex items-center rounded-full transition-colors cursor-pointer ${view === 'kanban'
-                  ? 'bg-paper-100 text-ink-900'
-                  : 'text-paper-400 hover:text-paper-100'
-                }`}
-            >
-              Kanban
-            </Link>
-          </div>
+        <div className="surface inline-flex w-fit items-center rounded-full p-1 text-xs font-medium">
+          <Link
+            href={buildHref({ view: null })}
+            className={`inline-flex h-8 cursor-pointer items-center rounded-full px-4 transition-colors ${
+              view === 'table'
+                ? 'bg-paper-100 text-ink-900 shadow-[inset_0_0_0_1px_rgba(17,16,14,0.14)]'
+                : 'text-paper-400 hover:text-paper-100'
+            }`}
+          >
+            Table
+          </Link>
+          <Link
+            href={buildHref({ view: 'kanban' })}
+            className={`inline-flex h-8 cursor-pointer items-center rounded-full px-4 transition-colors ${
+              view === 'kanban'
+                ? 'bg-paper-100 text-ink-900 shadow-[inset_0_0_0_1px_rgba(17,16,14,0.14)]'
+                : 'text-paper-400 hover:text-paper-100'
+            }`}
+          >
+            Kanban
+          </Link>
         </div>
       </div>
 
-      {/* ==== Stat strip ==== */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-px rounded-xl overflow-hidden hairline bg-paper-100/5">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-paper-100/[0.075] bg-paper-100/[0.06] md:grid-cols-6">
         {STATUSES.map((s) => (
-          <div key={s} className="bg-ink-900 px-4 py-3 hover:bg-ink-850 transition-colors">
+          <div key={s} className="bg-ink-900/95 px-4 py-3 transition-colors hover:bg-ink-850">
             <div className="flex items-center gap-2">
               <StatusDot status={s} size={6} />
-              <span className="text-2xs font-mono uppercase tracking-wider text-paper-500">
+              <span className="font-mono text-2xs uppercase tracking-wider text-paper-500">
                 {s.replace('_', ' ')}
               </span>
             </div>
-            <div className="mt-1 text-2xl font-display text-paper-50 tabular-nums">
+            <div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-paper-50">
               {countsByStatus[s] ?? 0}
             </div>
           </div>
         ))}
       </div>
 
-      {/* ==== Filters ==== */}
       <form
         key={listQs}
         onSubmit={onFilterSubmit}
-        className="surface rounded-xl p-3 flex flex-wrap items-center gap-2"
+        className="surface flex flex-wrap items-center gap-2 rounded-2xl p-3"
       >
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative min-w-[220px] flex-1">
           <svg
             viewBox="0 0 24 24"
             fill="none"
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-paper-500 pointer-events-none"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-paper-500"
             aria-hidden
           >
             <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
             <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <input
-            name="q"
-            className="input !pl-9"
-            placeholder="Search"
-            defaultValue={q}
-          />
+          <input name="q" className="input !pl-9" placeholder="Search" defaultValue={q} />
         </div>
-        <select
-          name="status"
-          className="select select-sm !w-auto"
-          defaultValue={status}
-        >
+        <select name="status" className="select select-sm !w-auto" defaultValue={status}>
           <option value="">Any status</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -240,18 +228,18 @@ export function DashboardQueue() {
           ))}
         </select>
         <select
-          name="priority"
+          name="escalationTier"
           className="select select-sm !w-auto"
-          defaultValue={priority}
+          defaultValue={escalationTier}
         >
-          <option value="">Any priority</option>
-          {PRIORITIES.map((p) => (
+          <option value="">Any escalation</option>
+          {ESCALATION_TIERS.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
         </select>
-        <label className="inline-flex items-center gap-2 px-3 h-8 rounded-full hairline cursor-pointer text-xs text-paper-300 hover:text-paper-50 transition-colors">
+        <label className="hairline inline-flex h-8 cursor-pointer items-center gap-2 rounded-full px-3 text-xs text-paper-300 transition-colors hover:text-paper-50">
           <input
             type="checkbox"
             name="noiseOnly"
@@ -261,7 +249,7 @@ export function DashboardQueue() {
           />
           Noise
         </label>
-        <label className="inline-flex items-center gap-2 px-3 h-8 rounded-full hairline cursor-pointer text-xs text-paper-300 hover:text-paper-50 transition-colors">
+        <label className="hairline inline-flex h-8 cursor-pointer items-center gap-2 rounded-full px-3 text-xs text-paper-300 transition-colors hover:text-paper-50">
           <input
             type="checkbox"
             name="knowledgeOnly"
@@ -281,20 +269,15 @@ export function DashboardQueue() {
         )}
       </form>
 
-      {/* ==== Results ==== */}
-      {isLoading && (
-        <div className="flex justify-center py-20">
-          <span className="spinner" />
-        </div>
-      )}
+      {isLoading && <QueueSkeleton />}
 
       {isError && (
         <div
           role="alert"
-          className="rounded-xl px-4 py-3 text-sm text-[#FF9999]"
+          className="rounded-2xl px-4 py-3 text-sm text-[#F0A49A]"
           style={{
-            background: 'rgba(255, 94, 94, 0.08)',
-            boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
+            background: 'rgba(230, 106, 92, 0.08)',
+            boxShadow: 'inset 0 0 0 1px rgba(230, 106, 92, 0.24)',
           }}
         >
           {error instanceof Error ? error.message : 'Could not load queue.'}
@@ -308,27 +291,27 @@ export function DashboardQueue() {
           {view === 'kanban' ? (
             <KanbanBoard tickets={data.items} listQueryKey={listQueryKey} />
           ) : (
-            <div className="surface rounded-xl overflow-hidden">
+            <div className="surface overflow-hidden rounded-2xl">
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-2xs font-mono uppercase tracking-wider text-paper-500 hairline-b">
-                      <th className="text-left font-normal px-4 py-2.5 w-28">When</th>
-                      <th className="text-left font-normal px-3 py-2.5">From</th>
-                      <th className="text-left font-normal px-3 py-2.5 w-32">Status</th>
-                      <th className="text-left font-normal px-3 py-2.5 w-28">Priority</th>
-                      <th className="text-left font-normal px-3 py-2.5 w-40">Category</th>
-                      <th className="text-left font-normal px-3 py-2.5 w-40">Flags</th>
-                      <th className="text-right font-normal px-4 py-2.5 w-16"></th>
+                    <tr className="hairline-b bg-paper-100/[0.025] font-mono text-2xs uppercase tracking-wider text-paper-500">
+                      <th className="w-28 px-4 py-2.5 text-left font-normal">When</th>
+                      <th className="px-3 py-2.5 text-left font-normal">From</th>
+                      <th className="w-32 px-3 py-2.5 text-left font-normal">Status</th>
+                      <th className="w-32 px-3 py-2.5 text-left font-normal">Escalation</th>
+                      <th className="w-40 px-3 py-2.5 text-left font-normal">Category</th>
+                      <th className="w-40 px-3 py-2.5 text-left font-normal">Flags</th>
+                      <th className="w-16 px-4 py-2.5 text-right font-normal"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.items.map((f) => (
                       <tr
                         key={f.id}
-                        className="group border-t border-paper-100/[0.04] hover:bg-paper-100/[0.02] transition-colors"
+                        className="group border-t border-paper-100/[0.045] transition-colors hover:bg-paper-100/[0.035]"
                       >
-                        <td className="px-4 py-3 text-2xs font-mono text-paper-500 tabular-nums whitespace-nowrap align-middle">
+                        <td className="whitespace-nowrap px-4 py-3 align-middle font-mono text-2xs tabular-nums text-paper-500">
                           {new Date(f.createdAt).toLocaleString(undefined, {
                             month: 'short',
                             day: 'numeric',
@@ -337,11 +320,11 @@ export function DashboardQueue() {
                           })}
                         </td>
                         <td className="px-3 py-3 align-middle">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-paper-100/5 text-paper-300 text-xs font-medium shrink-0">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-paper-100/[0.075] text-xs font-medium text-paper-200 ring-1 ring-paper-100/[0.08]">
                               {(f.submitterEmail[0] ?? '?').toUpperCase()}
                             </div>
-                            <span className="truncate text-paper-200 max-w-[16rem]">
+                            <span className="max-w-[16rem] truncate text-paper-200">
                               {f.submitterEmail}
                             </span>
                           </div>
@@ -350,13 +333,13 @@ export function DashboardQueue() {
                           <StatusCell ticket={f} listQueryKey={listQueryKey} />
                         </td>
                         <td className="px-3 py-3 align-middle">
-                          <PriorityPill priority={f.priority as Priority | null} />
+                          <EscalationPill tier={f.escalationTier} />
                         </td>
                         <td className="px-3 py-3 align-middle">
                           {f.category ? (
-                            <span className="text-paper-300 text-xs">{f.category}</span>
+                            <span className="text-xs text-paper-300">{f.category}</span>
                           ) : (
-                            <span className="text-paper-500 font-mono text-xs">—</span>
+                            <span className="font-mono text-xs text-paper-500">None</span>
                           )}
                         </td>
                         <td className="px-3 py-3 align-middle">
@@ -365,26 +348,24 @@ export function DashboardQueue() {
                               <span
                                 className="pill"
                                 style={{
-                                  color: '#FFA94D',
-                                  background: 'rgba(255,169,77,0.08)',
-                                  boxShadow: 'inset 0 0 0 1px rgba(255,169,77,0.2)',
+                                  color: '#E7B46A',
+                                  background: 'rgba(217,154,61,0.09)',
+                                  boxShadow: 'inset 0 0 0 1px rgba(217,154,61,0.2)',
                                 }}
                               >
                                 noise
                               </span>
                             )}
-                            {f.knowledgeGap && (
-                              <span className="pill pill-accent">gap</span>
-                            )}
+                            {f.knowledgeGap && <span className="pill pill-accent">gap</span>}
                             {!f.isNoise && !f.knowledgeGap && (
-                              <span className="text-paper-500 font-mono text-xs">—</span>
+                              <span className="font-mono text-xs text-paper-500">Clear</span>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right align-middle">
                           <Link
                             href={`/dashboard/${f.id}`}
-                            className="inline-flex items-center gap-1 text-xs text-paper-400 opacity-0 group-hover:opacity-100 hover:text-lime transition-all"
+                            className="inline-flex items-center gap-1 text-xs text-paper-400 opacity-100 transition-all hover:text-lime md:opacity-0 md:group-hover:opacity-100"
                           >
                             Open
                             <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
@@ -405,10 +386,32 @@ export function DashboardQueue() {
   );
 }
 
+function QueueSkeleton() {
+  return (
+    <div className="surface overflow-hidden rounded-2xl">
+      {Array.from({ length: 8 }, (_, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[120px_1fr_140px_140px] gap-4 border-t border-paper-100/[0.045] px-4 py-4 first:border-t-0"
+        >
+          <span className="h-4 rounded bg-paper-100/[0.055]" />
+          <span className="h-4 rounded bg-paper-100/[0.075]" />
+          <span className="h-6 rounded-full bg-paper-100/[0.055]" />
+          <span className="h-6 rounded-full bg-paper-100/[0.055]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
-    <div className="surface rounded-2xl p-16 text-center">
-      <h3 className="text-lg text-paper-50 tracking-tight">No tickets</h3>
+    <div className="surface rounded-2xl p-12 text-center md:p-16">
+      <div className="mx-auto mb-5 h-12 w-12 rounded-2xl bg-paper-100/[0.055] ring-1 ring-paper-100/[0.08]" />
+      <h3 className="text-lg font-medium tracking-tight text-paper-50">No tickets match this view</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-paper-400">
+        Reset the filters or submit feedback through a widget to populate the queue.
+      </p>
     </div>
   );
 }

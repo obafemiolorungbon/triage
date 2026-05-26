@@ -23,8 +23,7 @@ import type {
   TicketStatus,
 } from '@triage/api-client';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
-import { PriorityPill, StatusDot } from '../../components/ui/status';
-import type { Priority } from '../../components/ui/status';
+import { EscalationPill, StatusDot } from '../../components/ui/status';
 
 const COLUMNS: TicketStatus[] = [
   'new',
@@ -76,7 +75,7 @@ function SortableCard({ ticket }: { ticket: TicketDto }) {
         >
           {ticket.category ?? 'Untitled'}
         </Link>
-        <PriorityPill priority={ticket.priority as Priority | null} />
+        <EscalationPill tier={ticket.escalationTier} />
       </div>
       <div className="flex items-center gap-2 text-2xs font-mono text-paper-500">
         <span className="truncate max-w-[10rem]">{ticket.submitterEmail}</span>

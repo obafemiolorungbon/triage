@@ -1,8 +1,6 @@
-import type { TicketStatus } from '@triage/api-client';
+import type { EscalationTier, TicketStatus } from '@triage/api-client';
 
-export type Priority = 'low' | 'med' | 'high' | 'urgent';
-
-/** 6-char #RRGGBB → rgba(..., a) for readable pills on dark UI */
+/** 6-char #RRGGBB -> rgba(..., a) for readable pills on dark UI */
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace('#', '');
   const r = Number.parseInt(h.slice(0, 2), 16);
@@ -12,19 +10,22 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 const STATUS_META: Record<TicketStatus, { label: string; color: string }> = {
-  new: { label: 'New', color: '#60A5FA' },
-  triaged: { label: 'Triaged', color: '#D9FF4D' },
-  claimed: { label: 'Claimed', color: '#FFA94D' },
-  in_progress: { label: 'In progress', color: '#C084FC' },
-  resolved: { label: 'Resolved', color: '#4ADE80' },
-  rejected: { label: 'Rejected', color: '#6B665A' },
+  new: { label: 'New', color: '#8FB3C8' },
+  triaged: { label: 'Triaged', color: '#B8D66B' },
+  claimed: { label: 'Claimed', color: '#D99A3D' },
+  in_progress: { label: 'In progress', color: '#B9A66A' },
+  resolved: { label: 'Resolved', color: '#7CBF8B' },
+  rejected: { label: 'Rejected', color: '#756D61' },
 };
 
-const PRIORITY_META: Record<Priority, { label: string; color: string; pulse: boolean }> = {
-  urgent: { label: 'Urgent', color: '#FF5E5E', pulse: true },
-  high: { label: 'High', color: '#FF9F43', pulse: false },
-  med: { label: 'Med', color: '#FFD43B', pulse: false },
-  low: { label: 'Low', color: '#8C8678', pulse: false },
+const ESCALATION_META: Record<
+  EscalationTier,
+  { label: string; color: string; pulse: boolean }
+> = {
+  critical: { label: 'Critical', color: '#E66A5C', pulse: true },
+  expedite: { label: 'Expedite', color: '#D99A3D', pulse: false },
+  watch: { label: 'Watch', color: '#D8C45D', pulse: false },
+  none: { label: 'None', color: '#A49B8E', pulse: false },
 };
 
 export function StatusDot({
@@ -44,7 +45,7 @@ export function StatusDot({
         width: size,
         height: size,
         background: meta.color,
-        boxShadow: glow ? `0 0 12px -2px ${meta.color}` : undefined,
+        boxShadow: glow ? `0 10px 20px -14px ${meta.color}` : undefined,
       }}
       aria-hidden
     />
@@ -67,11 +68,12 @@ export function StatusPill({ status }: { status: TicketStatus }) {
   );
 }
 
-export function PriorityPill({ priority }: { priority: Priority | null | undefined }) {
-  if (!priority) {
-    return <span className="text-paper-500 text-xs font-mono">—</span>;
-  }
-  const meta = PRIORITY_META[priority];
+export function EscalationPill({
+  tier,
+}: {
+  tier: EscalationTier | null | undefined;
+}) {
+  const meta = ESCALATION_META[tier ?? 'none'];
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 h-6 text-xs font-medium tracking-tight text-paper-100"

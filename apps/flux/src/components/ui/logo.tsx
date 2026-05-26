@@ -6,12 +6,12 @@ export function Logo({ href = '/', className = '' }: { href?: string; className?
       href={href}
       className={`inline-flex items-center gap-2.5 group cursor-pointer ${className}`}
     >
-      <span className="relative flex items-center justify-center w-7 h-7 rounded-lg bg-ink-800 hairline overflow-hidden">
-        <span className="absolute inset-0 bg-gradient-to-br from-lime/25 to-transparent opacity-80 transition-opacity duration-300 group-hover:opacity-100" />
+      <span className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-ink-800 hairline">
+        <span className="absolute inset-0 bg-lime/10 opacity-80 transition-opacity duration-300 group-hover:opacity-100" />
         <svg
           viewBox="0 0 16 16"
           fill="none"
-          className="relative w-3.5 h-3.5 text-lime"
+          className="relative h-3.5 w-3.5 text-lime"
           aria-hidden
         >
           <path
@@ -22,7 +22,7 @@ export function Logo({ href = '/', className = '' }: { href?: string; className?
           />
         </svg>
       </span>
-      <span className="font-display text-[19px] leading-none translate-y-[1px] text-paper-50">
+      <span className="text-[17px] font-semibold leading-none tracking-tight text-paper-50">
         triage
       </span>
     </Link>

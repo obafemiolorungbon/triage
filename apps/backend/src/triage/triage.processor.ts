@@ -2,25 +2,31 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AiService } from '../ai/ai.service';
+import { EscalationService } from '../escalation/escalation.service';
+import { ExternalIssuesService } from '../external-issues/external-issues.service';
 import { NotificationService } from '../notification/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TRIAGE_QUEUE, type TriageJobData } from '../queue/triage.constants';
+import { SettingsService } from '../settings/settings.service';
 
-/**
- * Triage phase: runs the main model on feedback that already passed the spam
- * filter. Persists a `FeedbackTriageRun` audit row and mirrors the latest
- * values onto the denormalised `Feedback` columns used by list/Kanban views.
- */
 @Processor(TRIAGE_QUEUE)
 export class TriageProcessor extends WorkerHost {
   private readonly log = new Logger(TriageProcessor.name);
+  private readonly prisma: PrismaService;
+  private readonly ai: AiService;
+  private readonly notifications: NotificationService;
+  private readonly settings: SettingsService;
+  private readonly escalation: EscalationService;
+  private readonly externalIssues: ExternalIssuesService;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly ai: AiService,
-    private readonly notifications: NotificationService,
-  ) {
+  constructor() {
     super();
+    this.prisma = new PrismaService();
+    this.ai = new AiService();
+    this.notifications = new NotificationService();
+    this.settings = new SettingsService(this.prisma);
+    this.escalation = new EscalationService(this.prisma);
+    this.externalIssues = new ExternalIssuesService(this.prisma);
   }
 
   async process(job: Job<TriageJobData>): Promise<void> {
@@ -39,9 +45,17 @@ export class TriageProcessor extends WorkerHost {
     }
 
     try {
-      const industryContext = this.ai.getIndustryContext() || undefined;
+      const workspace = await this.settings.getWorkspace();
+      const industryContext =
+        workspace.industry || this.ai.getIndustryContext() || undefined;
+      const companyContext = await this.settings.getCompanyPromptContext();
       const triage = await this.ai.triageTicket(fb.rawText, {
         industryContext,
+        companyContext,
+      });
+      const evaluated = await this.escalation.evaluate({
+        metadata: fb.metadata as Record<string, unknown> | null,
+        userContext: fb.userContext as Record<string, unknown> | null,
       });
 
       await this.prisma.client.$transaction([
@@ -51,10 +65,13 @@ export class TriageProcessor extends WorkerHost {
             model: this.ai.getMainModelName(),
             cleanedText: triage.cleanedText,
             category: triage.category,
-            priority: triage.priority,
             sentiment: triage.sentiment,
             knowledgeGap: triage.knowledgeGap,
             suggestedTags: triage.suggestedTags,
+            escalationTier: evaluated.escalationTier,
+            escalationReason: evaluated.escalationReason,
+            issueTitle: triage.issueTitle,
+            issueBody: triage.issueBody,
             industryContext: industryContext ?? null,
           },
         }),
@@ -63,9 +80,10 @@ export class TriageProcessor extends WorkerHost {
           data: {
             cleanedText: triage.cleanedText,
             category: triage.category,
-            priority: triage.priority,
             sentiment: triage.sentiment,
             knowledgeGap: triage.knowledgeGap,
+            escalationTier: evaluated.escalationTier,
+            escalationReason: evaluated.escalationReason,
             status: 'triaged',
             triagedAt: new Date(),
           },
@@ -76,8 +94,17 @@ export class TriageProcessor extends WorkerHost {
         to: fb.submitterEmail,
         feedbackId,
         category: triage.category,
-        priority: triage.priority,
+        escalationTier: evaluated.escalationTier,
       });
+
+      if (workspace.autoCreateCritical && evaluated.escalationTier === 'critical') {
+        await this.externalIssues.createForFeedback({
+          feedbackId,
+          provider: workspace.autoCreateProvider,
+          creationMode: 'automatic',
+          draft: { title: triage.issueTitle, body: triage.issueBody },
+        });
+      }
 
       const admins = await this.prisma.client.user.findMany({
         where: { role: 'admin' },
@@ -87,7 +114,7 @@ export class TriageProcessor extends WorkerHost {
           data: {
             userId: u.id,
             title: 'Feedback triaged',
-            body: `${feedbackId} — ${triage.category} (${triage.priority})`,
+            body: `${feedbackId} - ${triage.category} (${evaluated.escalationTier})`,
           },
         });
       }
@@ -102,12 +129,21 @@ export class TriageProcessor extends WorkerHost {
     rawText: string,
     submitterEmail: string,
   ): Promise<void> {
+    const fb = await this.prisma.client.feedback.findUnique({
+      where: { id: feedbackId },
+    });
+    const evaluated = await this.escalation.evaluate({
+      metadata: fb?.metadata as Record<string, unknown> | null,
+      userContext: fb?.userContext as Record<string, unknown> | null,
+    });
+    const workspace = await this.settings.getWorkspace();
     await this.prisma.client.feedback.update({
       where: { id: feedbackId },
       data: {
         cleanedText: rawText,
         category: 'other',
-        priority: 'low',
+        escalationTier: evaluated.escalationTier,
+        escalationReason: evaluated.escalationReason,
         sentiment: 'neutral',
         knowledgeGap: false,
         status: 'triaged',
@@ -118,7 +154,14 @@ export class TriageProcessor extends WorkerHost {
       to: submitterEmail,
       feedbackId,
       category: 'other',
-      priority: 'low',
+      escalationTier: evaluated.escalationTier,
     });
+    if (workspace.autoCreateCritical && evaluated.escalationTier === 'critical') {
+      await this.externalIssues.createForFeedback({
+        feedbackId,
+        provider: workspace.autoCreateProvider,
+        creationMode: 'automatic',
+      });
+    }
   }
 }

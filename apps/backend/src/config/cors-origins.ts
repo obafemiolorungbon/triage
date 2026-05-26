@@ -19,6 +19,10 @@ export function getCorsOrigins(): string[] {
   if (process.env.NODE_ENV !== 'production') {
     out.add('http://localhost:3000');
     out.add('http://127.0.0.1:3000');
+    out.add('http://localhost:3001');
+    out.add('http://127.0.0.1:3001');
+    out.add('http://localhost:3002');
+    out.add('http://127.0.0.1:3002');
   }
 
   return [...out];

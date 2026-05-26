@@ -6,7 +6,7 @@ export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async summary() {
-    const [byStatus, byCategory, urgentOpen] = await Promise.all([
+    const [byStatus, byCategory, criticalOpen] = await Promise.all([
       this.prisma.client.feedback.groupBy({
         by: ['status'],
         _count: { id: true },
@@ -17,9 +17,12 @@ export class AnalyticsService {
         _count: { id: true },
       }),
       this.prisma.client.feedback.count({
-        where: { priority: 'urgent', status: { notIn: ['resolved', 'rejected'] } },
+        where: {
+          escalationTier: 'critical',
+          status: { notIn: ['resolved', 'rejected'] },
+        },
       }),
     ]);
-    return { byStatus, byCategory, urgentOpen };
+    return { byStatus, byCategory, criticalOpen };
   }
 }

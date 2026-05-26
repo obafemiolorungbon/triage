@@ -46,6 +46,15 @@ export class TicketsController {
     return this.feedback.getById(id);
   }
 
+  @Get(':id/attachments/:attachmentId/url')
+  @Roles('admin', 'agent')
+  getAttachmentUrl(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.feedback.createAttachmentDownloadUrl(id, attachmentId);
+  }
+
   @Patch(':id')
   @Roles('admin', 'agent')
   patch(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthedRequest) {
@@ -60,5 +69,15 @@ export class TicketsController {
     @Req() req: AuthedRequest,
   ) {
     return this.feedback.addComment(id, body, req);
+  }
+
+  @Post(':id/external-issues')
+  @Roles('admin', 'agent')
+  createExternalIssue(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() req: AuthedRequest,
+  ) {
+    return this.feedback.createExternalIssue(id, body, req);
   }
 }

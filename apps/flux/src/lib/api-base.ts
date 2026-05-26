@@ -3,10 +3,10 @@ export function getServerApiBase(): string {
   return (
     process.env.INTERNAL_API_URL ??
     process.env.NEXT_PUBLIC_API_URL ??
-    'http://localhost:4200'
+    'http://127.0.0.1:4200'
   );
 }
 
 export function getPublicApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4200';
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:4200';
 }

@@ -5,14 +5,24 @@ import { getServerApiBase } from './lib/api-base';
 export async function middleware(request: NextRequest) {
   const api = getServerApiBase();
   const cookie = request.headers.get('cookie') ?? '';
-  const res = await fetch(`${api}/api/v1/auth/get-session`, {
-    headers: { cookie },
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${api}/api/v1/auth/get-session`, {
+      headers: { cookie },
+      cache: 'no-store',
+    });
+  } catch {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
   if (!res.ok) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
-  const data: unknown = await res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
   const hasSession =
     typeof data === 'object' &&
     data !== null &&

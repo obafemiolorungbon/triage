@@ -1,6 +1,6 @@
 'use client';
 
-import type { TicketStatus } from '@triage/api-client';
+import type { ExternalIssueProvider, TicketStatus } from '@triage/api-client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
@@ -26,6 +26,12 @@ export function TicketActions({ id }: { id: string }) {
       setComment('');
       invalidate();
     },
+  });
+
+  const issueMutation = useMutation({
+    mutationFn: (provider: ExternalIssueProvider) =>
+      client.createExternalIssue(id, provider),
+    onSuccess: invalidate,
   });
 
   return (
@@ -87,6 +93,43 @@ export function TicketActions({ id }: { id: string }) {
           {String(patchMutation.error)}
         </div>
       )}
+
+      <div className="rule" />
+
+      <div className="flex flex-col gap-3">
+        <span className="text-2xs font-mono uppercase tracking-wider text-paper-500">
+          External issue
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={issueMutation.isPending}
+            onClick={() => issueMutation.mutate('linear')}
+          >
+            Linear
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={issueMutation.isPending}
+            onClick={() => issueMutation.mutate('jira')}
+          >
+            Jira
+          </button>
+        </div>
+        {issueMutation.isError && (
+          <div
+            className="rounded-lg px-3 py-2 text-xs text-[#FF9999]"
+            style={{
+              background: 'rgba(255, 94, 94, 0.08)',
+              boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
+            }}
+          >
+            {String(issueMutation.error)}
+          </div>
+        )}
+      </div>
 
       <div className="rule" />
 

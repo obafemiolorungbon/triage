@@ -41,7 +41,7 @@ function relative(ts: string): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-export function NotificationBell() {
+export function NotificationBell({ variant = 'top' }: { variant?: 'top' | 'sidebar' }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -87,7 +87,9 @@ export function NotificationBell() {
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        className="relative inline-flex items-center justify-center w-9 h-9 rounded-full text-paper-300 hover:text-paper-50 hover:bg-paper-100/5 transition-colors cursor-pointer"
+        className={`relative inline-flex h-9 items-center justify-center rounded-full text-paper-300 transition-colors hover:bg-paper-100/5 hover:text-paper-50 ${
+          variant === 'sidebar' ? 'flex-1 gap-2 px-3' : 'w-9'
+        }`}
         onClick={() => {
           setOpen((prev) => {
             const next = !prev;
@@ -98,7 +100,7 @@ export function NotificationBell() {
         aria-label="Notifications"
         aria-expanded={open}
       >
-        <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden>
+        <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
           <path
             d="M6 8a6 6 0 1112 0c0 3 1.5 4.5 2 5.5H4c.5-1 2-2.5 2-5.5zM9.5 18a2.5 2.5 0 005 0"
             stroke="currentColor"
@@ -107,6 +109,7 @@ export function NotificationBell() {
             strokeLinejoin="round"
           />
         </svg>
+        {variant === 'sidebar' && <span className="text-sm">Notifications</span>}
         {unread > 0 && (
           <span className="absolute top-1.5 right-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-lime text-[10px] font-mono font-semibold text-ink-900 tabular-nums shadow-glow-lime">
             {unread > 9 ? '9+' : unread}
@@ -118,7 +121,11 @@ export function NotificationBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 mt-2 w-[360px] rounded-2xl surface-raised overflow-hidden z-50 animate-fade-in"
+          className={`z-50 animate-fade-in overflow-hidden rounded-2xl surface-raised ${
+            variant === 'sidebar'
+              ? 'fixed bottom-20 left-5 w-[min(360px,calc(100vw-40px))]'
+              : 'absolute right-0 mt-2 w-[min(360px,calc(100vw-32px))]'
+          }`}
         >
           <div className="px-4 py-3 flex items-center justify-between hairline-b">
             <div className="flex items-center gap-2">

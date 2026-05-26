@@ -9,11 +9,15 @@ import { EventsModule } from '../events/events.module';
 import { FeedbackModule } from '../feedback/feedback.module';
 import { SessionGuard } from '../guards/session.guard';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { KbModule } from '../kb/kb.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { NotificationModule } from '../notification/notification.module';
 import { NotificationsInAppModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { QueueModule } from '../queue/queue.module';
+import { SettingsModule } from '../settings/settings.module';
+import { WidgetAdminModule } from '../widget-admin/widget-admin.module';
+import { WidgetModule } from '../widget/widget.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './health.controller';
@@ -30,6 +34,10 @@ import { HealthController } from './health.controller';
     FeedbackModule,
     AnalyticsModule,
     NotificationsInAppModule,
+    SettingsModule,
+    WidgetAdminModule,
+    WidgetModule,
+    KbModule,
     DigestModule,
     IntegrationsModule,
     TenantsModule,

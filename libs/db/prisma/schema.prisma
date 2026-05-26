@@ -73,11 +73,91 @@ model Verification {
   @@map("verification")
 }
 
-enum FeedbackPriority {
+enum EscalationTier {
+  none
+  watch
+  expedite
+  critical
+}
+
+enum EscalationOperator {
+  equals
+  contains
+  exists
+  numeric_gte
+}
+
+enum ExternalIssueProvider {
+  linear
+  jira
+}
+
+enum ExternalIssueCreationMode {
+  manual
+  automatic
+}
+
+enum AttachmentKind {
+  image
+}
+
+enum WidgetSubmissionType {
+  bug
+  idea
+  question
+  praise
+  custom
+}
+
+enum SurveyMode {
+  none
+  csat
+  nps
+  thumbs
+}
+
+enum SurveyScale {
+  csat_5
+  nps_10
+  thumbs
+}
+
+enum WidgetFieldKind {
+  text
+  textarea
+  email
+  url
+  number
+  select
+  multiselect
+  radio
+  checkbox
+  rating
+  file
+}
+
+enum WidgetFieldTarget {
+  user
+  metadata
+  message
+  title
+  category
+  severity
+}
+
+enum FeedbackSeverity {
   low
-  med
+  medium
   high
-  urgent
+  critical
+}
+
+enum DeflectionOutcome {
+  searched
+  answered
+  solved
+  submitted
+  abandoned
 }
 
 enum FeedbackSentiment {
@@ -97,27 +177,40 @@ enum FeedbackStatus {
 
 model Feedback {
   id              String             @id @default(cuid())
+  widgetId        String?
+  widget          Widget?            @relation(fields: [widgetId], references: [id], onDelete: SetNull)
   submitterEmail  String
   rawText         String             @db.Text
   cleanedText     String?            @db.Text
+  submissionType  WidgetSubmissionType?
   category        String?
-  priority        FeedbackPriority?
+  severity        FeedbackSeverity?
+  escalationTier  EscalationTier     @default(none)
+  escalationReason String?
   sentiment       FeedbackSentiment?
   status          FeedbackStatus     @default(new)
   isNoise         Boolean            @default(false)
   knowledgeGap    Boolean            @default(false)
+  userContext     Json?
+  metadata        Json?
+  sourceUrl       String?
+  sourceTitle     String?
   assignedAgentId String?
   assignedAgent   User?              @relation("AssignedFeedback", fields: [assignedAgentId], references: [id])
   createdAt       DateTime           @default(now())
   triagedAt       DateTime?
   resolvedAt      DateTime?
 
-  comments   Comment[]
-  auditLogs  AuditLog[]
-  triageRuns FeedbackTriageRun[]
+  comments           Comment[]
+  auditLogs          AuditLog[]
+  triageRuns         FeedbackTriageRun[]
+  externalIssueLinks ExternalIssueLink[]
+  attachments        Attachment[]
+  surveys            Survey[]
 
-  @@index([status, priority, createdAt])
+  @@index([status, escalationTier, createdAt])
   @@index([assignedAgentId])
+  @@index([widgetId])
   @@map("feedback")
 }
 
@@ -134,10 +227,13 @@ model FeedbackTriageRun {
   model           String
   cleanedText     String             @db.Text
   category        String
-  priority        FeedbackPriority
   sentiment       FeedbackSentiment
   knowledgeGap    Boolean
   suggestedTags   String[]
+  escalationTier  EscalationTier     @default(none)
+  escalationReason String?
+  issueTitle      String?
+  issueBody       String?            @db.Text
   industryContext String?            @db.Text
   createdAt       DateTime           @default(now())
 
@@ -207,4 +303,258 @@ model IntegrationConfig {
   updatedAt DateTime @updatedAt
 
   @@map("integration_config")
+}
+
+model Workspace {
+  id                 String                @id @default(cuid())
+  slug               String                @unique
+  companyName        String                @default("Your company")
+  productDescription String                @default("")
+  industry           String                @default("general SaaS")
+  supportContext     String                @default("")
+  escalationGuidance String                @default("")
+  aiContextNotes     String                @default("")
+  autoCreateCritical Boolean               @default(false)
+  autoCreateProvider ExternalIssueProvider @default(linear)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  widgets    Widget[]
+  kbArticles KbArticle[]
+  kbChunks   KbChunk[]
+  deflections Deflection[]
+
+  @@map("workspace")
+}
+
+model Widget {
+  id                  String       @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                String
+  widgetKey           String       @unique @default(cuid())
+  widgetSecret        String       @default(cuid())
+  archivedAt          DateTime?
+  brandColor          String       @default("#D9FF4D")
+  accentColor         String       @default("#0A0A0B")
+  position            String       @default("bottom-right")
+  size                String       @default("md")
+  title               String       @default("Send feedback")
+  description         String       @default("Tell us what happened or what could be better.")
+  successMessage      String       @default("Thanks. Your feedback was received.")
+  enabledUserFields   String[]     @default(["email", "name"])
+  requiredUserFields  String[]     @default(["email"])
+  enabledMetadataKeys String[]     @default(["plan", "environment", "accountId", "url"])
+  maxAttachmentBytes  Int          @default(10485760)
+  allowedMimeTypes    String[]     @default(["image/png", "image/jpeg", "image/webp"])
+  maxAttachmentsPerSubmit Int      @default(3)
+  enabledTypes        WidgetSubmissionType[] @default([bug, idea, question])
+  surveyMode          SurveyMode             @default(none)
+  pageRules           Json?
+  audienceRules       Json?
+  triggerConfig       Json?
+  inlineEnabled       Boolean                @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  theme       WidgetTheme?
+  fields      WidgetField[]
+  variants    WidgetVariant[]
+  feedback    Feedback[]
+  attachments Attachment[]
+  surveys     Survey[]
+  deflections Deflection[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+  @@map("widget")
+}
+
+model WidgetVariant {
+  id            String   @id @default(cuid())
+  widgetId      String
+  widget        Widget   @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  name          String
+  weight        Int      @default(100)
+  brandColor    String?
+  launcherLabel String?
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([widgetId, enabled])
+  @@map("widget_variant")
+}
+
+model KbArticle {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  slug            String
+  title           String
+  body            String   @db.Text
+  published       Boolean  @default(false)
+  sourceProvider  String?
+  sourceId        String?
+  sourceUrl       String?
+  sourceLocale    String?
+  sourceUpdatedAt DateTime?
+  sourcePath      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  chunks      KbChunk[]
+
+  @@unique([workspaceId, slug])
+  @@unique([workspaceId, sourceProvider, sourceId])
+  @@index([workspaceId, published])
+  @@map("kb_article")
+}
+
+model KbChunk {
+  id          String   @id @default(cuid())
+  articleId   String
+  article     KbArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  heading     String?
+  body        String   @db.Text
+  embedding   Unsupported("vector(1536)")?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([articleId])
+  @@index([workspaceId])
+  @@map("kb_chunk")
+}
+
+model Deflection {
+  id          String            @id @default(cuid())
+  workspaceId String
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  widgetId    String?
+  widget      Widget?           @relation(fields: [widgetId], references: [id], onDelete: SetNull)
+  query       String            @db.Text
+  outcome     DeflectionOutcome
+  articleId   String?
+  score       Float?
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([widgetId, outcome])
+  @@map("deflection")
+}
+
+model WidgetTheme {
+  id           String   @id @default(cuid())
+  widgetId     String   @unique
+  widget       Widget   @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  logoUrl      String?
+  surfaceColor String   @default("#0A0A0B")
+  textColor    String   @default("#FAF7F1")
+  fontFamily   String   @default("system")
+  borderRadius String   @default("18px")
+  shadow       String   @default("soft")
+  launcherIcon String   @default("message-circle")
+  launcherLabel String  @default("Feedback")
+  darkMode     String   @default("auto")
+  poweredBy    Boolean  @default(true)
+  successAnimation String @default("check")
+  customCss    String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("widget_theme")
+}
+
+model WidgetField {
+  id          String            @id @default(cuid())
+  widgetId    String
+  widget      Widget            @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  key         String
+  label       String
+  kind        WidgetFieldKind
+  required    Boolean           @default(false)
+  placeholder String?
+  helpText    String?
+  validation  Json?
+  options     Json?
+  visibleWhen Json?
+  target      WidgetFieldTarget @default(metadata)
+  order       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([widgetId, key])
+  @@index([widgetId, order])
+  @@map("widget_field")
+}
+
+model Attachment {
+  id         String         @id @default(cuid())
+  feedbackId String
+  feedback   Feedback       @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  widgetId   String
+  widget     Widget         @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  kind       AttachmentKind @default(image)
+  mimeType   String
+  fileName   String?
+  sizeBytes  Int
+  storageKey String         @unique
+  width      Int?
+  height     Int?
+  createdAt  DateTime       @default(now())
+
+  @@index([feedbackId])
+  @@index([widgetId])
+  @@map("attachment")
+}
+
+model Survey {
+  id         String      @id @default(cuid())
+  feedbackId String?
+  feedback   Feedback?   @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  widgetId   String
+  widget     Widget      @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  score      Int
+  scale      SurveyScale
+  comment    String?     @db.Text
+  createdAt  DateTime    @default(now())
+
+  @@index([feedbackId])
+  @@index([widgetId, createdAt])
+  @@map("survey")
+}
+
+model EscalationRule {
+  id        String             @id @default(cuid())
+  label     String
+  field     String
+  operator  EscalationOperator
+  value     String?
+  tier      EscalationTier
+  reason    String
+  enabled   Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([enabled, tier])
+  @@map("escalation_rule")
+}
+
+model ExternalIssueLink {
+  id           String                    @id @default(cuid())
+  feedbackId   String
+  feedback     Feedback                  @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  provider     ExternalIssueProvider
+  externalId   String
+  externalKey  String?
+  externalUrl  String
+  creationMode ExternalIssueCreationMode
+  createdAt    DateTime                  @default(now())
+
+  @@unique([feedbackId, provider])
+  @@index([provider, externalId])
+  @@map("external_issue_link")
 }
