@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { Public } from '../decorators/public.decorator';
+import { WidgetPublicGuard } from './widget-public.guard';
 import { WidgetService } from './widget.service';
 
 @Controller('widget')
@@ -9,30 +10,28 @@ export class WidgetController {
 
   @Get('config/:widgetKey')
   @Public()
+  @UseGuards(WidgetPublicGuard)
   config(@Param('widgetKey') widgetKey: string) {
     return this.widget.publicConfig(widgetKey);
   }
 
   @Post('feedback')
   @Public()
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
-  submit(@Body() body: unknown) {
-    return this.widget.submit(body);
+  @UseGuards(WidgetPublicGuard)
+  submit(@Body() body: unknown, @Req() req: Request) {
+    return this.widget.submit(body, req);
   }
 
   @Post('upload-url')
   @Public()
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @UseGuards(WidgetPublicGuard)
   uploadUrl(@Body() body: unknown) {
     return this.widget.createUploadUrl(body);
   }
 
   @Post('survey')
   @Public()
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @UseGuards(WidgetPublicGuard)
   survey(@Body() body: unknown) {
     return this.widget.submitSurvey(body);
   }

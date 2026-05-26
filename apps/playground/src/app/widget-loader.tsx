@@ -9,9 +9,11 @@ declare global {
       identify: (
         user?: Record<string, unknown>,
         metadata?: Record<string, unknown>,
+        opts?: { userHash?: string },
       ) => void;
-      open: () => void;
+      open: (opts?: { type?: string; prefill?: Record<string, unknown> }) => void;
       close: () => void;
+      prefill: (values: Record<string, unknown>) => void;
     };
   }
 }

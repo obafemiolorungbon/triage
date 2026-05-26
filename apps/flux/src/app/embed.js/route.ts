@@ -7,13 +7,15 @@ export function GET(req: NextRequest) {
   const js = `
 (function () {
   if (window.TriageWidget && window.TriageWidget.__ready) return;
+  console.warn('[Triage] /embed.js is stable today, but /embed/v1 is the versioned embed route.');
   var WIDGET_ORIGIN = ${JSON.stringify(base)};
   var API_ORIGIN = ${JSON.stringify(apiBase)};
   var script = document.currentScript;
   var scriptWidgetKey = script && script.getAttribute('data-widget-key');
   var scriptPosition = script && script.getAttribute('data-position');
+  var scriptUserHash = script && script.getAttribute('data-user-hash');
   var position = scriptPosition || 'bottom-right';
-  var context = { user: {}, metadata: {}, source: { url: location.href, title: document.title } };
+  var context = { user: {}, metadata: {}, userHash: scriptUserHash || undefined, prefill: {}, source: { url: location.href, title: document.title } };
   var panel;
   var frame;
   var button;
@@ -40,7 +42,13 @@ export function GET(req: NextRequest) {
       metadata.widgetVariantId = variant.id;
       metadata.widgetVariantName = variant.name;
     }
-    return { user: context.user || {}, metadata: metadata, source: context.source };
+    return { user: context.user || {}, metadata: metadata, userHash: context.userHash, prefill: context.prefill || {}, source: context.source };
+  }
+
+  function isTypingTarget(target) {
+    if (!target) return false;
+    var tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
 
   function chooseVariant(widgetKey, variants) {
@@ -138,6 +146,30 @@ export function GET(req: NextRequest) {
     return (variant && variant.launcherLabel) || themeValue('launcherLabel', 'Feedback');
   }
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (char) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+    });
+  }
+
+  function iconSvg() {
+    var icon = String(themeValue('launcherIcon', 'message-circle') || 'message-circle');
+    if (/^https:\\/\\//.test(icon)) {
+      return '<img src="' + icon.replace(/"/g, '%22') + '" alt="" style="width:17px;height:17px;object-fit:contain" />';
+    }
+    var paths = {
+      'message-circle': '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-3.6-.8L3 21l1.8-5A8.3 8.3 0 1 1 21 11.5Z" />',
+      bug: '<path d="M8 2l1.5 2h5L16 2M9 9h6M7 13H3M21 13h-4M7 17l-3 2M20 19l-3-2M12 4a6 6 0 0 1 6 6v4a6 6 0 0 1-12 0v-4a6 6 0 0 1 6-6Z" />',
+      'help-circle': '<circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.5 2.5 0 1 1 4.3 1.8c-.9.8-1.6 1.3-1.6 2.7M12 17h.01" />',
+      lightbulb: '<path d="M9 18h6M10 22h4M8.5 14.5a6 6 0 1 1 7 0c-.9.8-1.5 1.8-1.5 3.5h-4c0-1.7-.6-2.7-1.5-3.5Z" />',
+      'thumbs-up': '<path d="M7 10v11M7 11l5-8c1-1.6 3.5-.9 3.5 1v5H20c1.7 0 2.8 1.7 2.2 3.3L20 18a5 5 0 0 1-4.7 3H6" />',
+      megaphone: '<path d="M3 11v3a2 2 0 0 0 2 2h2l3 5v-5l9 3V6l-9 3H5a2 2 0 0 0-2 2Z" />',
+      star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2 7.5 14 3 9.6l6.2-.9L12 3Z" />'
+    };
+    var path = paths[icon] || paths['message-circle'];
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px">' + path + '</svg>';
+  }
+
   function fontCss() {
     var font = themeValue('fontFamily', 'system');
     if (!font || font === 'system') return 'system-ui,-apple-system,Segoe UI,sans-serif';
@@ -193,7 +225,7 @@ export function GET(req: NextRequest) {
     if (!scriptWidgetKey || button) return;
     button = document.createElement('button');
     button.type = 'button';
-    button.textContent = launcherLabel();
+    button.innerHTML = iconSvg() + '<span>' + escapeHtml(launcherLabel()) + '</span>';
     button.setAttribute('aria-label', 'Open feedback widget');
     button.style.cssText = [
       'position:fixed',
@@ -207,6 +239,7 @@ export function GET(req: NextRequest) {
       'box-shadow:' + shadowCss(),
       'cursor:pointer',
       'display:none',
+      'gap:8px',
       'align-items:center',
       'justify-content:center'
     ].concat(launcherPositionCss()).join(';');
@@ -225,7 +258,7 @@ export function GET(req: NextRequest) {
       'box-shadow:' + shadowCss()
     ].concat(panelPositionCss()).join(';');
     frame = document.createElement('iframe');
-    frame.src = WIDGET_ORIGIN + '/widget?widgetKey=' + encodeURIComponent(scriptWidgetKey);
+    frame.src = WIDGET_ORIGIN + '/widget?widgetKey=' + encodeURIComponent(scriptWidgetKey) + '&hostOrigin=' + encodeURIComponent(location.origin);
     frame.title = 'Feedback widget';
     frame.allow = 'clipboard-write';
     frame.sandbox = 'allow-scripts allow-forms allow-same-origin allow-popups';
@@ -235,6 +268,36 @@ export function GET(req: NextRequest) {
     frame.onload = sendContext;
     panel.appendChild(frame);
     document.body.appendChild(panel);
+    updatePanelSize();
+  }
+
+  function updatePanelSize() {
+    if (!panel) return;
+    var vv = window.visualViewport;
+    var availableHeight = vv ? vv.height : window.innerHeight;
+    if (window.innerWidth < 640) {
+      panel.style.left = '0';
+      panel.style.right = '0';
+      panel.style.bottom = '0';
+      panel.style.top = 'auto';
+      panel.style.transform = 'none';
+      panel.style.width = '100vw';
+      panel.style.height = Math.max(320, availableHeight) + 'px';
+      panel.style.borderRadius = '18px 18px 0 0';
+      return;
+    }
+    panel.style.width = 'min(420px,calc(100vw - 32px))';
+    panel.style.height = 'min(640px,calc(100dvh - 112px))';
+    panel.style.borderRadius = themeValue('borderRadius', '18px');
+    panel.style.left = '';
+    panel.style.right = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    panel.style.transform = '';
+    panelPositionCss().forEach(function (part) {
+      var index = part.indexOf(':');
+      if (index > -1) panel.style.setProperty(part.slice(0, index), part.slice(index + 1));
+    });
   }
 
   function sendContext() {
@@ -243,9 +306,14 @@ export function GET(req: NextRequest) {
     }
   }
 
-  function open() {
+  function open(opts) {
+    opts = opts || {};
+    if (opts.type || opts.prefill) {
+      prefill(Object.assign({}, opts.prefill || {}, opts.type ? { type: opts.type } : {}));
+    }
     ensureLauncher();
     if (!panel || !canRender()) return;
+    updatePanelSize();
     panel.style.display = 'block';
     sendContext();
   }
@@ -292,6 +360,19 @@ export function GET(req: NextRequest) {
     revealLauncher();
   }
 
+  function onDocumentClick(event) {
+    var target = event.target && event.target.closest ? event.target.closest('[data-triage-open]') : null;
+    if (!target) return;
+    event.preventDefault();
+    open({ type: target.getAttribute('data-triage-type') || undefined });
+  }
+
+  function onDocumentKeydown(event) {
+    if (event.key !== '?' || isTypingTarget(event.target)) return;
+    event.preventDefault();
+    open();
+  }
+
   function refreshVisibility() {
     if (!button) return;
     setButtonVisible(triggered && canRender());
@@ -306,7 +387,7 @@ export function GET(req: NextRequest) {
       config = key === scriptWidgetKey ? config : inlineConfig;
       if (!pageAllowed(inlineConfig && inlineConfig.pageRules)) return;
       var inlineFrame = document.createElement('iframe');
-      inlineFrame.src = WIDGET_ORIGIN + '/widget?widgetKey=' + encodeURIComponent(key);
+      inlineFrame.src = WIDGET_ORIGIN + '/widget?widgetKey=' + encodeURIComponent(key) + '&hostOrigin=' + encodeURIComponent(location.origin);
       inlineFrame.title = 'Feedback form';
       inlineFrame.allow = 'clipboard-write';
       inlineFrame.sandbox = 'allow-scripts allow-forms allow-same-origin allow-popups';
@@ -339,12 +420,39 @@ export function GET(req: NextRequest) {
   });
 
   window.addEventListener('popstate', refreshVisibility);
+  window.addEventListener('resize', updatePanelSize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', updatePanelSize);
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeydown);
+
+  function prefill(values) {
+    context.prefill = Object.assign({}, context.prefill || {}, values || {});
+    sendContext();
+  }
 
   window.TriageWidget = {
     __ready: true,
-    identify: function (user, metadata) {
+    boot: function (opts) {
+      opts = opts || {};
+      if (opts.widgetKey) scriptWidgetKey = opts.widgetKey;
+      if (opts.user) context.user = opts.user;
+      if (opts.userHash) context.userHash = opts.userHash;
+      if (opts.locale) context.locale = opts.locale;
+      boot();
+    },
+    shutdown: function () {
+      if (button && button.parentNode) button.parentNode.removeChild(button);
+      if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+      button = null;
+      panel = null;
+      frame = null;
+      visible = false;
+      triggered = false;
+    },
+    identify: function (user, metadata, opts) {
       context.user = user || {};
       context.metadata = metadata || {};
+      context.userHash = opts && opts.userHash ? opts.userHash : context.userHash;
       sendContext();
       refreshVisibility();
     },
@@ -354,8 +462,17 @@ export function GET(req: NextRequest) {
       refreshVisibility();
     },
     open: open,
-    close: close
+    close: close,
+    prefill: prefill
   };
+
+  var q = window.triageQ || [];
+  window.triageQ = { push: function (call) {
+    if (!call || !call.length) return;
+    var method = call[0];
+    if (window.TriageWidget[method]) window.TriageWidget[method].apply(window.TriageWidget, call.slice(1));
+  }};
+  if (Array.isArray(q)) q.forEach(window.triageQ.push);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

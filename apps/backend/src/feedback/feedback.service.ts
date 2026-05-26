@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { randomBytes } from 'crypto';
 import type { Feedback, FeedbackStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import {
@@ -72,8 +73,10 @@ export class FeedbackService {
         submissionType: parsed.data.submissionType,
         severity: parsed.data.severity,
         rawText,
+        shortId: await this.nextShortId(),
         userContext: (parsed.data.userContext ?? undefined) as Prisma.InputJsonValue,
         metadata: (parsed.data.metadata ?? undefined) as Prisma.InputJsonValue,
+        consent: (parsed.data.consent ?? undefined) as Prisma.InputJsonValue,
         sourceUrl: parsed.data.source?.url,
         sourceTitle: parsed.data.source?.title,
         escalationTier: evaluated.escalationTier,
@@ -82,10 +85,14 @@ export class FeedbackService {
       },
     });
     await this.intakeQueue.add('intake', { feedbackId: fb.id });
-    return { id: fb.id, status: fb.status };
+    return { id: fb.id, shortId: fb.shortId, status: fb.status };
   }
 
-  async createWidgetTicket(body: unknown, widgetId: string) {
+  async createWidgetTicket(
+    body: unknown,
+    widgetId: string,
+    consent?: Prisma.InputJsonValue,
+  ) {
     const parsed = widgetFeedbackBodySchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
@@ -101,6 +108,7 @@ export class FeedbackService {
       severity: routed.severity,
       userContext: routed.user,
       metadata: routed.metadata,
+      consent,
       source: parsed.data.source,
     }).then(async (ticket) => {
       await this.createAttachments(ticket.id, widgetId, parsed.data.attachments);
@@ -459,5 +467,17 @@ export class FeedbackService {
     if (typeof value === 'string') return value.trim() === '';
     if (Array.isArray(value)) return value.length === 0;
     return false;
+  }
+
+  private async nextShortId() {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const value = `TR-${randomBytes(4).toString('hex').slice(0, 6).toUpperCase()}`;
+      const existing = await this.prisma.client.feedback.findUnique({
+        where: { shortId: value },
+        select: { id: true },
+      });
+      if (!existing) return value;
+    }
+    throw new BadRequestException('Could not allocate ticket reference');
   }
 }

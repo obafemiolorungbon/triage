@@ -9,6 +9,7 @@ async function main() {
   }
   await prisma.feedback.create({
     data: {
+      shortId: 'TR-DEMO01',
       submitterEmail: 'demo.customer@example.com',
       rawText:
         'The checkout page crashes when I apply a discount code on mobile Safari.',
@@ -19,6 +20,7 @@ async function main() {
   });
   await prisma.feedback.create({
     data: {
+      shortId: 'TR-DEMO02',
       submitterEmail: 'spam@example.com',
       rawText: 'buy cheap watches click here http://spam.example',
       status: 'rejected',

@@ -177,6 +177,7 @@ enum FeedbackStatus {
 
 model Feedback {
   id              String             @id @default(cuid())
+  shortId         String             @unique
   widgetId        String?
   widget          Widget?            @relation(fields: [widgetId], references: [id], onDelete: SetNull)
   submitterEmail  String
@@ -193,6 +194,7 @@ model Feedback {
   knowledgeGap    Boolean            @default(false)
   userContext     Json?
   metadata        Json?
+  consent         Json?
   sourceUrl       String?
   sourceTitle     String?
   assignedAgentId String?
@@ -335,6 +337,14 @@ model Widget {
   widgetKey           String       @unique @default(cuid())
   widgetSecret        String       @default(cuid())
   archivedAt          DateTime?
+  allowedOrigins      String[]     @default([])
+  devMode             Boolean      @default(false)
+  identityVerificationRequired Boolean @default(false)
+  rateLimitPerMinute  Int          @default(30)
+  configRateLimitPerMinute Int     @default(120)
+  requireConsent      Boolean      @default(false)
+  privacyPolicyUrl    String?
+  consentText         String       @default("I agree to be contacted about this feedback.")
   brandColor          String       @default("#D9FF4D")
   accentColor         String       @default("#0A0A0B")
   position            String       @default("bottom-right")

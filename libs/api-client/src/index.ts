@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const ticketSchema = z.object({
   id: z.string(),
+  shortId: z.string(),
   widgetId: z.string().nullable().optional(),
   submitterEmail: z.string(),
   rawText: z.string(),
@@ -24,6 +25,7 @@ const ticketSchema = z.object({
   knowledgeGap: z.boolean(),
   userContext: z.unknown().nullable().optional(),
   metadata: z.unknown().nullable().optional(),
+  consent: z.unknown().nullable().optional(),
   sourceUrl: z.string().nullable().optional(),
   sourceTitle: z.string().nullable().optional(),
   assignedAgentId: z.string().nullable(),
@@ -93,6 +95,14 @@ const widgetSchema = z.object({
   widgetKey: z.string(),
   widgetSecret: z.string(),
   archivedAt: z.string().nullable(),
+  allowedOrigins: z.array(z.string()),
+  devMode: z.boolean(),
+  identityVerificationRequired: z.boolean(),
+  rateLimitPerMinute: z.number(),
+  configRateLimitPerMinute: z.number(),
+  requireConsent: z.boolean(),
+  privacyPolicyUrl: z.string().nullable().optional(),
+  consentText: z.string(),
   brandColor: z.string(),
   accentColor: z.string(),
   position: z.string(),
@@ -335,7 +345,7 @@ export function createApiClient(opts: ApiClientOptions) {
       metadata?: Record<string, unknown>;
       source?: { url?: string; title?: string };
     }) {
-      return request<{ id: string; status: string }>(ticketsBase, {
+      return request<{ id: string; shortId: string; status: string }>(ticketsBase, {
         method: 'POST',
         body: JSON.stringify(body),
       });

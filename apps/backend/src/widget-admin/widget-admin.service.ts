@@ -39,6 +39,14 @@ export class WidgetAdminService {
       data: {
         workspaceId: workspace.id,
         name: parsed.data.name,
+        allowedOrigins: parsed.data.allowedOrigins,
+        devMode: parsed.data.devMode,
+        identityVerificationRequired: parsed.data.identityVerificationRequired,
+        rateLimitPerMinute: parsed.data.rateLimitPerMinute,
+        configRateLimitPerMinute: parsed.data.configRateLimitPerMinute,
+        requireConsent: parsed.data.requireConsent,
+        privacyPolicyUrl: parsed.data.privacyPolicyUrl || null,
+        consentText: parsed.data.consentText,
         brandColor: parsed.data.brandColor,
         accentColor: parsed.data.accentColor,
         position: parsed.data.position,
@@ -191,6 +199,14 @@ export class WidgetAdminService {
       data: {
         workspaceId: source.workspaceId,
         name: await this.nextCopyName(source.workspaceId, source.name),
+        allowedOrigins: source.allowedOrigins,
+        devMode: source.devMode,
+        identityVerificationRequired: source.identityVerificationRequired,
+        rateLimitPerMinute: source.rateLimitPerMinute,
+        configRateLimitPerMinute: source.configRateLimitPerMinute,
+        requireConsent: source.requireConsent,
+        privacyPolicyUrl: source.privacyPolicyUrl,
+        consentText: source.consentText,
         brandColor: source.brandColor,
         accentColor: source.accentColor,
         position: source.position,
@@ -297,7 +313,7 @@ export class WidgetAdminService {
       darkMode: theme?.darkMode ?? undefined,
       poweredBy: theme?.poweredBy ?? undefined,
       successAnimation: theme?.successAnimation ?? undefined,
-      customCss: theme?.customCss ?? null,
+      customCss: sanitizeCustomCss(theme?.customCss),
     };
   }
 
@@ -332,4 +348,19 @@ export class WidgetAdminService {
       .replace(/^_+|_+$/g, '')
       .slice(0, 80);
   }
+}
+
+function sanitizeCustomCss(value: string | null | undefined) {
+  if (!value?.trim()) return null;
+  const sanitized = value
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/@import[^;]+;?/gi, '')
+    .replace(/@font-face\s*{[\s\S]*?}/gi, '')
+    .replace(/expression\s*\([^)]*\)/gi, '')
+    .replace(/url\s*\(\s*(['"]?)\s*javascript:[^)]+\)/gi, '')
+    .replace(/\bbehavior\s*:[^;]+;?/gi, '')
+    .replace(/\b-moz-binding\s*:[^;]+;?/gi, '')
+    .slice(0, 10_000)
+    .trim();
+  return sanitized || null;
 }

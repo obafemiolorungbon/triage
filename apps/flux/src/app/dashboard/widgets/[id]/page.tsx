@@ -89,6 +89,14 @@ export default function WidgetEditorPage() {
       if (!draft) throw new Error('Widget is not loaded');
       return client.updateWidget(id, {
         name: draft.name,
+        allowedOrigins: draft.allowedOrigins,
+        devMode: draft.devMode,
+        identityVerificationRequired: draft.identityVerificationRequired,
+        rateLimitPerMinute: draft.rateLimitPerMinute,
+        configRateLimitPerMinute: draft.configRateLimitPerMinute,
+        requireConsent: draft.requireConsent,
+        privacyPolicyUrl: draft.privacyPolicyUrl ?? null,
+        consentText: draft.consentText,
         brandColor: draft.brandColor,
         accentColor: draft.accentColor,
         position: draft.position,
@@ -200,6 +208,121 @@ export default function WidgetEditorPage() {
       </section>
 
       <section className="surface rounded-2xl p-5 md:p-6 space-y-4">
+        <SectionTitle title="Security" />
+        <Field label="Allowed origins">
+          <textarea
+            className="textarea min-h-28 font-mono !text-xs"
+            value={(draft.allowedOrigins ?? []).join('\n')}
+            placeholder={'https://acme.com\nhttps://*.acme.com'}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                allowedOrigins: e.target.value
+                  .split('\n')
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <span className="text-xs text-paper-500">
+            Leave empty to allow any origin. Localhost is allowed with configured origins only when dev mode is on.
+          </span>
+        </Field>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="flex items-center gap-3 rounded-lg bg-paper-100/[0.04] px-3 py-2 text-sm text-paper-200">
+            <input
+              type="checkbox"
+              checked={draft.devMode}
+              onChange={(e) => setDraft({ ...draft, devMode: e.target.checked })}
+            />
+            Dev mode allows localhost origins
+          </label>
+          <label className="flex items-center gap-3 rounded-lg bg-paper-100/[0.04] px-3 py-2 text-sm text-paper-200">
+            <input
+              type="checkbox"
+              checked={draft.identityVerificationRequired}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  identityVerificationRequired: e.target.checked,
+                })
+              }
+            />
+            Require signed user identity
+          </label>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Submission rate limit / minute">
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={1000}
+              value={draft.rateLimitPerMinute}
+              onChange={(e) =>
+                setDraft({ ...draft, rateLimitPerMinute: Number(e.target.value) })
+              }
+            />
+          </Field>
+          <Field label="Config rate limit / minute">
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={5000}
+              value={draft.configRateLimitPerMinute}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  configRateLimitPerMinute: Number(e.target.value),
+                })
+              }
+            />
+          </Field>
+        </div>
+        <div className="rounded-xl border border-paper-100/10 bg-paper-100/[0.025] p-4 text-xs leading-5 text-paper-400">
+          Sign identified users with hex HMAC-SHA256 using the widget secret and
+          the lowercased email address, or user id when email is missing. Pass it
+          as <span className="font-mono text-paper-200">data-user-hash</span> or
+          the third argument to <span className="font-mono text-paper-200">TriageWidget.identify</span>.
+        </div>
+      </section>
+
+      <section className="surface rounded-2xl p-5 md:p-6 space-y-4">
+        <SectionTitle title="Consent" />
+        <label className="flex items-center gap-3 rounded-lg bg-paper-100/[0.04] px-3 py-2 text-sm text-paper-200">
+          <input
+            type="checkbox"
+            checked={draft.requireConsent}
+            onChange={(e) => setDraft({ ...draft, requireConsent: e.target.checked })}
+          />
+          Require consent before submit
+        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Consent text">
+            <input
+              className="input"
+              value={draft.consentText}
+              onChange={(e) => setDraft({ ...draft, consentText: e.target.value })}
+            />
+          </Field>
+          <Field label="Privacy policy URL">
+            <input
+              className="input"
+              value={draft.privacyPolicyUrl ?? ''}
+              placeholder="https://acme.com/privacy"
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  privacyPolicyUrl: e.target.value || null,
+                })
+              }
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section className="surface rounded-2xl p-5 md:p-6 space-y-4">
         <SectionTitle title="Branding" />
         <div className="grid md:grid-cols-2 gap-4">
           <ColorPaletteField
@@ -244,6 +367,9 @@ export default function WidgetEditorPage() {
           <ThemeField draft={draft} setDraft={setDraft} field="launcherLabel" label="Launcher label" />
           <ThemeField draft={draft} setDraft={setDraft} field="launcherIcon" label="Launcher icon" />
           <ThemeField draft={draft} setDraft={setDraft} field="fontFamily" label="Font family" />
+          <div className="md:col-span-3">
+            <ThemeTextarea draft={draft} setDraft={setDraft} field="customCss" label="Custom CSS" />
+          </div>
           <Field label="Dark mode">
             <select
               className="select"
@@ -846,6 +972,37 @@ function ThemeColorField({
         })
       }
     />
+  );
+}
+
+function ThemeTextarea({
+  draft,
+  setDraft,
+  field,
+  label,
+}: {
+  draft: WidgetDto;
+  setDraft: (value: WidgetDto) => void;
+  field: 'customCss';
+  label: string;
+}) {
+  return (
+    <Field label={label}>
+      <textarea
+        className="textarea min-h-28 font-mono !text-xs"
+        value={String(themeValue(draft, field) ?? '')}
+        placeholder=".widget-theme .btn-primary { border-radius: 14px; }"
+        onChange={(e) =>
+          setDraft({
+            ...draft,
+            theme: {
+              ...defaultTheme(draft.theme),
+              [field]: e.target.value || null,
+            },
+          })
+        }
+      />
+    </Field>
   );
 }
 

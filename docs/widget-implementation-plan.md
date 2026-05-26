@@ -11,14 +11,15 @@ A phased, opinionated roadmap for bringing the Triage feedback widget from its c
 
 ### Current state
 
-The widget today is a minimal embed:
+The widget MVP now has the core platform pieces in place:
 
-- **Singleton config** — one `WidgetConfig` row (`id = 'default'`) in `libs/db/prisma/schema.prisma`, auto-created on first read via `SettingsService.getWidget()`.
-- **Public API** — `GET /api/v1/widget/config/:widgetKey` and `POST /api/v1/widget/feedback` in `apps/backend/src/widget/`.
-- **Embed script** — `apps/flux/src/app/embed.js/route.ts` injects a "Feedback" button and iframe pointing at `/widget?widgetKey=…`.
-- **Submit flow** — freeform message + optional user fields → `FeedbackService.createWidgetTicket()` → intake queue → AI triage. Fire-and-forget; no end-user follow-up.
+- **Multi-widget model** - `Workspace`, `Widget`, `WidgetTheme`, widget keys, widget secrets, and `Feedback.widgetId` are in the Prisma schema.
+- **Public API** - `GET /api/v1/widget/config/:widgetKey`, `POST /api/v1/widget/feedback`, `POST /api/v1/widget/upload-url`, and `POST /api/v1/widget/survey` live in `apps/backend/src/widget/`.
+- **Admin API** - authenticated widget CRUD, duplicate, archive, and secret rotation live under `apps/backend/src/widget-admin/`.
+- **Embed script** - `/embed.js` aliases the versioned `/embed/v1` route, with an immutable hash route for long-lived installs.
+- **Submit flow** - configured form fields, consent, image attachments, user metadata, short ticket references, security checks, and AI triage feed the internal dashboard.
 
-Key gaps vs industry standard: no multi-widget support, weak security (no origin allowlist, no HMAC identity), no attachments, no form builder, no AI deflection, no submit acknowledgement, minimal embed SDK.
+Key gaps vs industry standard: captcha, encrypted secret storage, email acknowledgements, read-only status links, deeper observability, full compliance automation, localization, and some accessibility polish remain post-MVP work.
 
 ### MVP goal
 

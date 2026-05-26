@@ -113,6 +113,7 @@ export const createTicketBodySchema = z.object({
   severity: feedbackSeveritySchema.optional(),
   userContext: z.record(z.unknown()).optional(),
   metadata: z.record(z.unknown()).optional(),
+  consent: z.unknown().optional(),
   source: z
     .object({
       url: z.string().url().optional(),
@@ -201,7 +202,7 @@ export const widgetThemeSchema = z.object({
   fontFamily: z.string().min(1).max(160).default('system'),
   borderRadius: z.string().min(1).max(40).default('18px'),
   shadow: z.string().min(1).max(80).default('soft'),
-  launcherIcon: z.string().min(1).max(80).default('message-circle'),
+  launcherIcon: z.string().min(1).max(300).default('message-circle'),
   launcherLabel: z.string().min(1).max(80).default('Feedback'),
   darkMode: z.enum(['auto', 'light', 'dark']).default('auto'),
   poweredBy: z.boolean().default(true),
@@ -247,6 +248,9 @@ export const widgetFeedbackBodySchema = z.object({
   fields: z.record(z.unknown()).optional(),
   user: widgetUserSchema,
   metadata: widgetMetadataSchema,
+  userHash: z.string().max(256).optional(),
+  website: z.string().max(500).optional(),
+  consentAccepted: z.boolean().optional(),
   source: z
     .object({
       url: z.string().url().optional(),
@@ -299,6 +303,14 @@ export type WorkspaceConfigInput = z.infer<typeof workspaceConfigSchema>;
 
 export const widgetConfigSchema = z.object({
   name: z.string().min(1).max(120).optional(),
+  allowedOrigins: z.array(z.string().min(1).max(300)).default([]),
+  devMode: z.boolean().default(false),
+  identityVerificationRequired: z.boolean().default(false),
+  rateLimitPerMinute: z.number().int().min(1).max(1_000).default(30),
+  configRateLimitPerMinute: z.number().int().min(1).max(5_000).default(120),
+  requireConsent: z.boolean().default(false),
+  privacyPolicyUrl: z.string().url().optional().nullable(),
+  consentText: z.string().min(1).max(500).default('I agree to be contacted about this feedback.'),
   brandColor: z.string().min(3).max(40),
   accentColor: z.string().min(3).max(40),
   position: z.string().min(1).max(80),

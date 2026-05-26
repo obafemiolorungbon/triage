@@ -6,6 +6,19 @@ Triage gives companies an embeddable website/app widget, AI-assisted feedback
 classification, metadata-based escalation, an internal support Kanban, and
 manual or automatic handoff to Linear or Jira.
 
+## Open-Source MVP Status
+
+This repo is preparing for a public MIT-licensed MVP release. The current
+product supports a self-hosted single-workspace deployment, multiple widgets,
+widget branding, public feedback intake, image attachments, AI triage,
+metadata escalation, knowledge-base deflection, an internal dashboard, and
+Linear/Jira handoff.
+
+The MVP is not yet a fully hardened production support platform. Captcha,
+encrypted widget secret storage, acknowledgement emails, public status pages,
+full observability, data-retention automation, localization, and deeper
+compliance workflows are tracked as roadmap items.
+
 ## Apps
 
 | App | Description |
@@ -17,6 +30,14 @@ manual or automatic handoff to Linear or Jira.
 | `libs/shared-types` | Zod schemas and shared API types |
 | `libs/db` | Prisma schema, migrations, and client |
 | `libs/api-client` | Typed REST helper for the web app |
+
+## Docs
+
+- [Deployment guide](docs/deployment.md)
+- [Widget usage guide](docs/widget-usage.md)
+- [Widget implementation roadmap](docs/widget-implementation-plan.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## Core Flow
 
@@ -80,7 +101,9 @@ $env:ADMIN_EMAIL="you@corp.com"; $env:ADMIN_PASSWORD="YourSecurePass"; $env:API_
 | http://localhost:3000/dashboard | Staff dashboard |
 | http://localhost:3000/dashboard/settings | Company, escalation, and integration settings |
 | http://localhost:3000/dashboard/widgets | Widget keys, branding, fields, and image attachment limits |
-| http://localhost:3000/embed.js | Embeddable widget script |
+| http://localhost:3000/embed.js | Embeddable widget script alias |
+| http://localhost:3000/embed/v1 | Versioned widget script |
+| http://localhost:3000/embed/v1.c8b5f1a4.js | Immutable widget script URL |
 | http://localhost:3001 | Marketing site |
 | http://localhost:3002 | Widget playground |
 | http://localhost:4200/api/v1 | Backend API |
@@ -89,7 +112,7 @@ $env:ADMIN_EMAIL="you@corp.com"; $env:ADMIN_PASSWORD="YourSecurePass"; $env:API_
 
 ```html
 <script
-  src="http://localhost:3000/embed.js"
+  src="http://localhost:3000/embed/v1"
   data-widget-key="local-dev-widget"
   data-position="bottom-right"
   async
@@ -101,6 +124,34 @@ $env:ADMIN_EMAIL="you@corp.com"; $env:ADMIN_PASSWORD="YourSecurePass"; $env:API_
     { plan: "enterprise", environment: "production", affectedUsers: 42 }
   );
 </script>
+```
+
+The script also supports queued calls before it loads:
+
+```html
+<script>
+  window.triageQ = window.triageQ || [];
+  triageQ.push(["identify", { email: "customer@example.com" }]);
+  triageQ.push(["open", { type: "bug", prefill: { title: "Checkout issue" } }]);
+</script>
+```
+
+Runtime API:
+
+```ts
+TriageWidget.boot({ widgetKey, user, userHash, locale });
+TriageWidget.shutdown();
+TriageWidget.identify(user, metadata, { userHash });
+TriageWidget.update(metadata);
+TriageWidget.prefill({ title, message, severity });
+TriageWidget.open({ type: "bug", prefill: { title: "Checkout broken" } });
+TriageWidget.close();
+```
+
+Custom open buttons can live anywhere on the host page:
+
+```html
+<button data-triage-open data-triage-type="bug">Report a bug</button>
 ```
 
 ## Image Attachments
@@ -163,9 +214,27 @@ line. The public config endpoint returns the theme, `/widget` applies it through
 CSS variables, and `/embed.js` uses the same values for the host-page launcher
 and iframe panel.
 
+Launcher icons accept a small built-in set (`message-circle`, `bug`,
+`help-circle`, `lightbulb`, `thumbs-up`, `megaphone`, `star`) or an HTTPS image
+URL. Custom CSS is sanitized on save and applied inside the iframe only.
+
 `data-position` on the embed script still works as an override; otherwise the
 widget uses the saved dashboard position, including bottom, top, centered, and
 side-tab launcher placements.
+
+## Widget Consent And Security
+
+Per-widget security settings live in `/dashboard/widgets/:id`.
+
+- Allowed origins restrict where a widget key can submit from.
+- Dev mode allows localhost origins while testing.
+- Identity verification uses `userHash = HMAC-SHA256(widgetSecret, email || id)`.
+- Rate limits are per widget key and client IP.
+- Optional consent requires a checkbox and stores consent metadata on feedback.
+- The success screen shows a copyable ticket reference like `TR-1A2B3C`.
+
+Keyboard behavior: `?` opens the launcher from the host page, `Escape` closes the
+iframe panel, and `?` inside the widget shows shortcut help.
 
 ## Knowledge Base Deflection
 
@@ -211,6 +280,37 @@ docker compose up --build
 - Marketing site: http://localhost:3001
 - Widget playground: http://localhost:3002
 - API: http://localhost:4200
+
+## Production Deployment
+
+For a self-hosted deployment:
+
+1. Run Postgres with pgvector, Redis, and S3-compatible object storage.
+2. Set production env vars for `DATABASE_URL`, `REDIS_URL`,
+   `BETTER_AUTH_SECRET`, `APP_URL`, `API_PUBLIC_URL`, and S3 credentials.
+3. Run migrations with `pnpm db:migrate:deploy`.
+4. Run the backend API and worker as long-running services.
+5. Deploy `apps/flux` for the dashboard/widget iframe, `apps/site` for the
+   marketing/docs site, and optionally `apps/playground` for demos.
+6. Create the first admin with `pnpm seed:admin`.
+7. Configure widget origins, consent, branding, and integrations from the
+   dashboard before publishing the embed script.
+
+## Open-Source Roadmap
+
+The near-term open-source roadmap is intentionally focused on making the widget
+safer, easier to deploy, and easier to operate:
+
+- Security: Turnstile/hCaptcha, encrypted widget secrets, profanity filtering,
+  and an origin-rule test tool.
+- Submissions: console/network autocapture, richer device metadata, conditional
+  form logic, and stronger server-side field validation.
+- Acknowledgement: Resend email receipts, signed read-only status links, and
+  office-hours/SLA messaging.
+- Widget UX: shadow-DOM launcher, focus trap, focus return, aria-live updates,
+  reduced-motion polish, localization, RTL, and live draft preview.
+- Operations: widget analytics, embed error reporting, Sentry integration,
+  config audit diffs, health checks, retention jobs, and deletion workflows.
 
 ## Scripts
 

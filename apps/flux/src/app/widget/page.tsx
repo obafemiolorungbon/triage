@@ -68,6 +68,9 @@ type WidgetConfig = {
   enabledTypes: SubmissionType[];
   surveyMode: SurveyMode;
   fields: WidgetField[];
+  requireConsent: boolean;
+  privacyPolicyUrl?: string | null;
+  consentText: string;
   theme?: WidgetTheme | null;
 };
 
@@ -91,6 +94,8 @@ type KbSuggestion = {
 type ContextPayload = {
   user?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  userHash?: string;
+  prefill?: Record<string, unknown>;
   source?: { url?: string; title?: string };
 };
 
@@ -142,6 +147,7 @@ export default function WidgetPage() {
 function WidgetPageInner() {
   const sp = useSearchParams();
   const widgetKey = sp.get('widgetKey') ?? '';
+  const hostOrigin = sp.get('hostOrigin') ?? '';
   const api = getPublicApiBase();
   const [submissionType, setSubmissionType] = useState<SubmissionType>('bug');
   const [message, setMessage] = useState('');
@@ -149,6 +155,12 @@ function WidgetPageInner() {
   const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
   const [user, setUser] = useState<Record<string, string>>({});
   const [metadata, setMetadata] = useState<Record<string, string>>({});
+  const [userHash, setUserHash] = useState('');
+  const [website, setWebsite] = useState('');
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [copiedShortId, setCopiedShortId] = useState(false);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [source, setSource] = useState<ContextPayload['source']>({});
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -165,10 +177,12 @@ function WidgetPageInner() {
   const [prefersDark, setPrefersDark] = useState(true);
 
   const configQuery = useQuery({
-    queryKey: ['widget-config', widgetKey],
+    queryKey: ['widget-config', widgetKey, hostOrigin],
     enabled: Boolean(widgetKey),
     queryFn: async () => {
-      const res = await fetch(`${api}/api/v1/widget/config/${widgetKey}`);
+      const res = await fetch(`${api}/api/v1/widget/config/${widgetKey}`, {
+        headers: hostOrigin ? { 'X-Triage-Host-Origin': hostOrigin } : undefined,
+      });
       if (!res.ok) throw new Error('Widget is not configured');
       return (await res.json()) as WidgetConfig;
     },
@@ -223,10 +237,33 @@ function WidgetPageInner() {
       const payload = event.data.payload as ContextPayload;
       setUser((prev) => ({ ...prev, ...stringifyRecord(payload.user) }));
       setMetadata((prev) => ({ ...prev, ...stringifyRecord(payload.metadata) }));
+      setUserHash(typeof payload.userHash === 'string' ? payload.userHash : '');
+      if (payload.prefill) applyPrefill(payload.prefill);
       setSource(payload.source ?? {});
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (event.key === 'Escape') {
+        window.parent.postMessage({ type: 'triage:close' }, '*');
+      }
+      if (event.key === '?' && !typing) {
+        event.preventDefault();
+        setShowShortcutHelp((next) => !next);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -257,7 +294,7 @@ function WidgetPageInner() {
       const routedMessage = String(fieldValues.message ?? message).trim();
       const res = await fetch(`${api}/api/v1/widget/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: widgetHeaders(hostOrigin),
         body: JSON.stringify({
           widgetKey,
           type: submissionType,
@@ -266,16 +303,20 @@ function WidgetPageInner() {
           fields: fieldValues,
           user,
           metadata,
+          userHash: userHash || undefined,
+          website,
+          consentAccepted,
           source,
           attachments,
         }),
       });
       if (!res.ok) throw new Error(await errorMessage(res, 'Could not send feedback'));
-      return (await res.json()) as { id: string; status: string };
+      return (await res.json()) as { id: string; shortId: string; status: string };
     },
     onSuccess: () => {
       if (draftKey) window.localStorage.removeItem(draftKey);
       setAttachments([]);
+      setCopiedShortId(false);
       if (deflectionText) {
         void postKbEvent(api, {
           widgetKey,
@@ -293,7 +334,7 @@ function WidgetPageInner() {
       if (!surveyScore || !submitMutation.data?.id || !config) return null;
       const res = await fetch(`${api}/api/v1/widget/survey`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: widgetHeaders(hostOrigin),
         body: JSON.stringify({
           widgetKey,
           feedbackId: submitMutation.data.id,
@@ -337,7 +378,7 @@ function WidgetPageInner() {
       try {
         const res = await fetch(`${api}/api/v1/widget/kb/search`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: widgetHeaders(hostOrigin),
           signal: controller.signal,
           body: JSON.stringify({
             widgetKey,
@@ -367,7 +408,7 @@ function WidgetPageInner() {
     try {
       const res = await fetch(`${api}/api/v1/widget/kb/answer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: widgetHeaders(hostOrigin),
         body: JSON.stringify({
           widgetKey,
           query: deflectionText,
@@ -423,7 +464,7 @@ function WidgetPageInner() {
         }
         const uploadRes = await fetch(`${api}/api/v1/widget/upload-url`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: widgetHeaders(hostOrigin),
           body: JSON.stringify({
             widgetKey,
             fileName: file.name,
@@ -460,6 +501,22 @@ function WidgetPageInner() {
     }
   }
 
+  function applyPrefill(prefill: Record<string, unknown>) {
+    if (typeof prefill.type === 'string') {
+      setSubmissionType(prefill.type as SubmissionType);
+    }
+    if (typeof prefill.title === 'string') setTitle(prefill.title);
+    if (typeof prefill.message === 'string') setMessage(prefill.message);
+    setFieldValues((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        Object.entries(prefill).filter(
+          ([key]) => !['type', 'title', 'message'].includes(key),
+        ).map(([key, value]) => [key, normalizeFieldValue(value)]),
+      ),
+    }));
+  }
+
   if (configQuery.isLoading) {
     return (
       <main className="min-h-screen grid place-items-center bg-ink-900 text-paper-100">
@@ -478,11 +535,15 @@ function WidgetPageInner() {
 
   if (submitMutation.isSuccess) {
     const askSurvey = config.surveyMode !== 'none' && !surveyDone;
+    const shortId = submitMutation.data?.shortId;
     return (
       <main
         className="widget-theme min-h-screen bg-ink-900 text-paper-100 p-5 flex flex-col"
+        role="dialog"
+        aria-modal="true"
         style={themeStyle}
       >
+        {theme?.customCss && <style>{theme.customCss}</style>}
         <button
           type="button"
           className="self-end btn-ghost"
@@ -537,6 +598,19 @@ function WidgetPageInner() {
                 accentColor={config.accentColor}
               />
               <h1 className="text-2xl font-semibold tracking-tight text-paper-50">{config.successMessage}</h1>
+              {shortId && (
+                <button
+                  type="button"
+                  className="mt-4 rounded-xl bg-paper-100/[0.06] px-3 py-2 font-mono text-sm text-paper-200 ring-1 ring-paper-100/10 hover:bg-paper-100/[0.09]"
+                  onClick={async () => {
+                    await navigator.clipboard?.writeText(shortId);
+                    setCopiedShortId(true);
+                  }}
+                >
+                  {copiedShortId ? 'Copied ' : 'Copy reference '}
+                  {shortId}
+                </button>
+              )}
               {theme?.poweredBy && (
                 <p className="mt-4 text-xs text-paper-500">Powered by Triage</p>
               )}
@@ -548,11 +622,20 @@ function WidgetPageInner() {
   }
 
   return (
-    <main className="widget-theme min-h-screen bg-ink-900 p-4 text-paper-100" style={themeStyle}>
+    <main
+      className="widget-theme min-h-screen bg-ink-900 p-4 text-paper-100"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="widget-title"
+      aria-describedby="widget-description"
+      style={themeStyle}
+    >
+      {theme?.customCss && <style>{theme.customCss}</style>}
       <form
         className="mx-auto flex max-w-md flex-col gap-4 rounded-[22px] border border-paper-100/[0.08] bg-paper-100/[0.025] p-4 shadow-[inset_0_1px_0_rgba(245,239,229,0.04)]"
         onSubmit={(e) => {
           e.preventDefault();
+          setAttemptedSubmit(true);
           submitMutation.mutate();
         }}
       >
@@ -565,8 +648,8 @@ function WidgetPageInner() {
                 className="mb-3 h-8 max-w-40 object-contain"
               />
             )}
-            <h1 className="text-2xl font-semibold tracking-tight text-paper-50">{config.title}</h1>
-            <p className="mt-1 text-sm text-paper-400">{config.description}</p>
+            <h1 id="widget-title" className="text-2xl font-semibold tracking-tight text-paper-50">{config.title}</h1>
+            <p id="widget-description" className="mt-1 text-sm text-paper-400">{config.description}</p>
           </div>
           <button
             type="button"
@@ -603,6 +686,7 @@ function WidgetPageInner() {
             <FieldControl
               field={field}
               value={fieldValues[field.key]}
+              invalid={attemptedSubmit && field.required && isEmptyFieldValue(fieldValues[field.key])}
               onChange={(value) =>
                 setFieldValues((prev) => ({ ...prev, [field.key]: value }))
               }
@@ -683,6 +767,7 @@ function WidgetPageInner() {
             <input
               className="input"
               required={required.has(field)}
+              aria-invalid={attemptedSubmit && required.has(field) && !user[field] ? true : undefined}
               type={field === 'email' ? 'email' : 'text'}
               value={user[field] ?? ''}
               onChange={(e) => setUser({ ...user, [field]: e.target.value })}
@@ -753,22 +838,65 @@ function WidgetPageInner() {
           </Field>
         )}
 
+        {config.requireConsent && (
+          <label className="flex items-start gap-3 rounded-xl bg-paper-100/[0.04] p-3 text-sm text-paper-300 ring-1 ring-paper-100/10">
+            <input
+              type="checkbox"
+              className="mt-1"
+              required
+              aria-invalid={attemptedSubmit && !consentAccepted ? true : undefined}
+              checked={consentAccepted}
+              onChange={(e) => setConsentAccepted(e.target.checked)}
+            />
+            <span>
+              {config.consentText}{' '}
+              {config.privacyPolicyUrl && (
+                <a
+                  className="text-paper-100 underline decoration-paper-100/30 underline-offset-4"
+                  href={config.privacyPolicyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Privacy policy
+                </a>
+              )}
+            </span>
+          </label>
+        )}
+
         {submitMutation.isError && (
           <div className="rounded-lg px-3 py-2 text-sm text-[#FF9999] bg-[#ff5e5e14]">
             {String(submitMutation.error)}
           </div>
         )}
 
+        <input
+          type="text"
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+          value={website}
+          onChange={(e) => setWebsite(e.target.value)}
+          className="sr-only"
+          aria-hidden="true"
+        />
+
         <button
           type="submit"
           className="btn-primary h-11 justify-center"
-          disabled={submitMutation.isPending || uploading}
+          disabled={submitMutation.isPending || uploading || (config.requireConsent && !consentAccepted)}
           style={{ background: config.brandColor, color: config.accentColor }}
         >
           {uploading ? 'Uploading' : submitMutation.isPending ? 'Sending' : 'Send feedback'}
         </button>
         {theme?.poweredBy && (
           <p className="text-center text-xs text-paper-500">Powered by Triage</p>
+        )}
+        {showShortcutHelp && (
+          <div className="rounded-xl bg-paper-100/[0.04] p-3 text-xs leading-5 text-paper-400 ring-1 ring-paper-100/10">
+            <p className="font-medium text-paper-200">Keyboard shortcuts</p>
+            <p>Escape closes the widget. ? toggles this help.</p>
+          </div>
         )}
       </form>
     </main>
@@ -796,10 +924,12 @@ function Field({
 function FieldControl({
   field,
   value,
+  invalid,
   onChange,
 }: {
   field: WidgetField;
   value: FieldValue | undefined;
+  invalid?: boolean;
   onChange: (value: FieldValue) => void;
 }) {
   const options = fieldOptions(field);
@@ -808,6 +938,7 @@ function FieldControl({
       <select
         className="select"
         required={field.required}
+        aria-invalid={invalid || undefined}
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -825,6 +956,7 @@ function FieldControl({
       <textarea
         className="textarea min-h-32"
         required={field.required}
+        aria-invalid={invalid || undefined}
         placeholder={field.placeholder ?? undefined}
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
@@ -836,6 +968,7 @@ function FieldControl({
       <select
         className="select"
         required={field.required}
+        aria-invalid={invalid || undefined}
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -891,6 +1024,7 @@ function FieldControl({
         min={1}
         max={10}
         required={field.required}
+        aria-invalid={invalid || undefined}
         value={String(value ?? '')}
         onChange={(e) => onChange(Number(e.target.value))}
       />
@@ -900,6 +1034,7 @@ function FieldControl({
     <input
       className="input"
       required={field.required}
+      aria-invalid={invalid || undefined}
       type={field.kind === 'number' ? 'number' : field.kind}
       placeholder={field.placeholder ?? undefined}
       value={String(value ?? '')}
@@ -1057,6 +1192,19 @@ function stringifyRecord(value: Record<string, unknown> | undefined) {
   return out;
 }
 
+function normalizeFieldValue(value: unknown): FieldValue {
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.map(String);
+  return String(value ?? '');
+}
+
+function isEmptyFieldValue(value: unknown) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
@@ -1144,6 +1292,13 @@ async function errorMessage(res: Response, fallback: string) {
   } catch {
     return fallback;
   }
+}
+
+function widgetHeaders(hostOrigin: string) {
+  return {
+    'Content-Type': 'application/json',
+    ...(hostOrigin ? { 'X-Triage-Host-Origin': hostOrigin } : {}),
+  };
 }
 
 async function postKbEvent(
