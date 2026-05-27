@@ -8,6 +8,7 @@ import type {
   KbImportResult,
 } from '@triage/api-client';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
+import { EmptyState } from '../../../components/ui/empty-state';
 
 const EMPTY_ARTICLE = {
   id: '',
@@ -368,6 +369,34 @@ export default function KnowledgeBasePage() {
             {articlesQuery.isError && (
               <p className="text-sm text-[#FF9999]">Could not load articles.</p>
             )}
+            {!articlesQuery.isLoading &&
+              !articlesQuery.isError &&
+              (articlesQuery.data ?? []).length === 0 && (
+                <EmptyState
+                  variant="kb"
+                  tone="plain"
+                  title="No articles yet"
+                  description="Add a focused answer the widget can suggest before users submit feedback."
+                  actions={
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => setDraft(EMPTY_ARTICLE)}
+                      >
+                        New article
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => setImportOpen(true)}
+                      >
+                        Import
+                      </button>
+                    </>
+                  }
+                />
+              )}
             <div className="space-y-2">
             {(articlesQuery.data ?? []).map((article) => (
               <button

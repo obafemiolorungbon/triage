@@ -23,6 +23,7 @@ import type {
   TicketStatus,
 } from '@triage/api-client';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
+import { EmptyState } from '../../components/ui/empty-state';
 import { EscalationPill, StatusDot } from '../../components/ui/status';
 
 const COLUMNS: TicketStatus[] = [
@@ -141,9 +142,13 @@ function KanbanColumn({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-2 px-2 pb-2">
           {tickets.length === 0 && (
-            <div className="mt-4 mx-2 rounded-lg border border-dashed border-paper-100/10 p-6 text-center text-2xs font-mono uppercase tracking-wider text-paper-500">
-              Empty
-            </div>
+            <EmptyState
+              variant="kanban"
+              tone="compact"
+              title="Nothing here"
+              description="Drop a ticket into this lane when the status changes."
+              className="mx-2 mt-4"
+            />
           )}
           {tickets.map((t) => (
             <SortableCard key={t.id} ticket={t} />

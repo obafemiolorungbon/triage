@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { getPublicApiBase } from '../../lib/api-base';
+import { EmptyState } from '../../components/ui/empty-state';
 
 type NotificationRow = {
   id: string;
@@ -157,7 +158,14 @@ export function NotificationBell({ variant = 'top' }: { variant?: 'top' | 'sideb
               <li className="p-4 text-sm text-[#FF9999]">Could not load.</li>
             )}
             {!listQuery.isLoading && items.length === 0 && (
-              <li className="p-10 text-center text-sm text-paper-500">No notifications</li>
+              <li className="p-4">
+                <EmptyState
+                  variant="notifications"
+                  tone="compact"
+                  title="No notifications"
+                  description="Important ticket updates will appear here."
+                />
+              </li>
             )}
             {items.map((i) => (
               <li

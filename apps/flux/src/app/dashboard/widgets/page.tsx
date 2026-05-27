@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
+import { EmptyState } from '../../../components/ui/empty-state';
 import { PalettePresetPicker, WIDGET_PALETTES, paletteTheme } from './color-palettes';
 
 const DEFAULT_WIDGET = {
@@ -85,8 +86,27 @@ export default function WidgetsPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(widgetsQuery.data ?? []).map((widget) => (
+      {!widgetsQuery.isLoading && !widgetsQuery.isError && (widgetsQuery.data ?? []).length === 0 && (
+        <EmptyState
+          variant="widgets"
+          title="Create your first feedback widget"
+          description="Start with one widget for your marketing site, then duplicate it for in-app feedback or experiments."
+          actions={
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              Create widget
+            </button>
+          }
+        />
+      )}
+
+      {(widgetsQuery.data ?? []).length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(widgetsQuery.data ?? []).map((widget) => (
           <article key={widget.id} className="surface group overflow-hidden rounded-2xl p-5">
             <div
               className="mb-5 h-1.5 rounded-full"
@@ -132,8 +152,9 @@ export default function WidgetsPage() {
               )}
             </div>
           </article>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

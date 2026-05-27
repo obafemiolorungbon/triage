@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
+import { EmptyState as DashboardEmptyState } from '../../components/ui/empty-state';
 import { EscalationPill, StatusDot, StatusPill } from '../../components/ui/status';
 import { KanbanBoard } from './kanban-board';
 
@@ -284,7 +285,32 @@ export function DashboardQueue() {
         </div>
       )}
 
-      {data && !isLoading && data.items.length === 0 && <EmptyState />}
+      {data && !isLoading && data.items.length === 0 && (
+        <DashboardEmptyState
+          variant={hasFilters ? 'filtered' : 'tickets'}
+          title={hasFilters ? 'No tickets match this view' : 'No feedback has arrived yet'}
+          description={
+            hasFilters
+              ? 'This queue is clear for the current filters. Reset the view or create a ticket manually.'
+              : 'Publish a widget on your site or create the first ticket manually to start triaging feedback.'
+          }
+          actions={
+            <>
+              {hasFilters && (
+                <Link href="/dashboard" className="btn-secondary">
+                  Reset filters
+                </Link>
+              )}
+              <Link href="/submit" className="btn-primary">
+                Create ticket
+              </Link>
+              <Link href="/dashboard/widgets" className="btn-ghost text-paper-400">
+                Configure widgets
+              </Link>
+            </>
+          }
+        />
+      )}
 
       {data && !isLoading && data.items.length > 0 && (
         <>
@@ -400,18 +426,6 @@ function QueueSkeleton() {
           <span className="h-6 rounded-full bg-paper-100/[0.055]" />
         </div>
       ))}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="surface rounded-2xl p-12 text-center md:p-16">
-      <div className="mx-auto mb-5 h-12 w-12 rounded-2xl bg-paper-100/[0.055] ring-1 ring-paper-100/[0.08]" />
-      <h3 className="text-lg font-medium tracking-tight text-paper-50">No tickets match this view</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-paper-400">
-        Reset the filters or submit feedback through a widget to populate the queue.
-      </p>
     </div>
   );
 }

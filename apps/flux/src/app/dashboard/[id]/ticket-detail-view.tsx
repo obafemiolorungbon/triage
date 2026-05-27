@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { browserTicketsClient } from '../../../lib/tickets-browser-client';
+import { EmptyState } from '../../../components/ui/empty-state';
 import { EscalationPill, StatusPill } from '../../../components/ui/status';
 import { TicketActions } from './ticket-actions';
 
@@ -174,7 +175,13 @@ export function TicketDetailView({ id }: { id: string }) {
                 …
               </div>
             ) : similar.length === 0 ? (
-              <p className="mt-4 text-sm text-paper-500">None</p>
+              <EmptyState
+                variant="similar"
+                tone="compact"
+                title="No close matches"
+                description="New related feedback will appear here once the queue has enough signal."
+                className="mt-4"
+              />
             ) : (
               <ul className="mt-4 surface rounded-xl divide-y divide-paper-100/5 overflow-hidden">
                 {similar.map((s) => (
@@ -288,7 +295,12 @@ export function TicketDetailView({ id }: { id: string }) {
               <SectionHead num="-" label="External" />
               <div className="mt-4 space-y-2">
                 {(f.externalIssueLinks ?? []).length === 0 ? (
-                  <p className="text-sm text-paper-500">No linked issues</p>
+                  <EmptyState
+                    variant="external"
+                    tone="compact"
+                    title="No linked issues"
+                    description="Create a Linear or Jira issue from the action panel when this needs engineering follow-up."
+                  />
                 ) : (
                   (f.externalIssueLinks ?? []).map((link) => (
                     <a
