@@ -39,7 +39,7 @@ jobs:
       NEXT_PUBLIC_WIDGET_ORIGIN: http://localhost:3000
       NEXT_PUBLIC_WIDGET_KEY: local-dev-widget
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
