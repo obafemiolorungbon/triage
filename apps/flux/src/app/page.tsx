@@ -23,9 +23,6 @@ export default function HomePage() {
             <Link href="/login" className="btn-primary h-11 justify-center">
               Staff sign in
             </Link>
-            <Link href="/submit" className="btn-secondary h-11 justify-center">
-              Manual intake
-            </Link>
           </div>
         </section>
 

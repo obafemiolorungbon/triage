@@ -55,4 +55,24 @@ describe('validateEnv', () => {
       false,
     );
   });
+
+  it('requires Bull Board basic auth when enabled in production', () => {
+    const out = validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      BULL_BOARD_ENABLED: 'true',
+    });
+    expect(out).toMatchObject({ _INVALID: true });
+  });
+
+  it('allows Bull Board in production when basic auth is configured', () => {
+    const out = validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      BULL_BOARD_ENABLED: 'true',
+      BULL_BOARD_USER: 'ops',
+      BULL_BOARD_PASSWORD: 'queue-dashboard-password',
+    });
+    expect(out).not.toHaveProperty('_INVALID');
+  });
 });

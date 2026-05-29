@@ -39,7 +39,10 @@ export default function DashboardLayout({
       <div className="mx-auto grid max-w-[1500px] lg:h-dvh lg:grid-cols-[280px_1fr]">
         <aside className="hidden h-dvh border-r border-paper-100/[0.075] px-5 py-6 lg:block">
           <div className="flex h-full flex-col">
-            <Logo />
+            <div className="flex items-center justify-between gap-3">
+              <Logo />
+              <NotificationBell variant="sidebar" />
+            </div>
             <div className="mt-8">
               <Suspense fallback={<div className="h-56 animate-pulse rounded-2xl bg-paper-100/[0.04]" />}>
                 <DashboardNav variant="side" />
@@ -54,10 +57,7 @@ export default function DashboardLayout({
                   Feedback intake, triage, and handoff in one self-hosted console.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <NotificationBell variant="sidebar" />
-                <LogoutButton />
-              </div>
+              <LogoutButton />
             </div>
           </div>
         </aside>

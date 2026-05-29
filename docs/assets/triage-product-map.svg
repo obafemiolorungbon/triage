@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Triage product workflow map</title>
+  <desc id="desc">A dark product map showing customer feedback moving from the widget into triage, knowledge base deflection, escalation rules, and Linear or Jira handoff.</desc>
+  <rect width="1280" height="720" fill="#11100e"/>
+  <path d="M0 80h1280M0 160h1280M0 240h1280M0 320h1280M0 400h1280M0 480h1280M0 560h1280M0 640h1280M80 0v720M160 0v720M240 0v720M320 0v720M400 0v720M480 0v720M560 0v720M640 0v720M720 0v720M800 0v720M880 0v720M960 0v720M1040 0v720M1120 0v720M1200 0v720" stroke="#f5efe5" stroke-opacity=".055"/>
+  <rect x="64" y="56" width="1152" height="608" fill="#181715" stroke="#f5efe5" stroke-opacity=".16"/>
+  <text x="96" y="112" fill="#f5efe5" font-family="Arial, sans-serif" font-size="42" font-weight="700">Triage</text>
+  <text x="96" y="146" fill="#a49b8e" font-family="Arial, sans-serif" font-size="17">Customer signal becomes accountable product work.</text>
+  <g font-family="Arial, sans-serif">
+    <rect x="96" y="218" width="214" height="188" fill="#211f1c" stroke="#b8d66b" stroke-opacity=".48"/>
+    <text x="120" y="258" fill="#b8d66b" font-size="13" font-weight="700">01 WIDGET</text>
+    <text x="120" y="302" fill="#f5efe5" font-size="24" font-weight="700">Capture</text>
+    <text x="120" y="336" fill="#d9ccbb" font-size="15">Form fields, metadata,</text>
+    <text x="120" y="360" fill="#d9ccbb" font-size="15">source URL, consent,</text>
+    <text x="120" y="384" fill="#d9ccbb" font-size="15">and image attachments.</text>
+    <rect x="382" y="182" width="240" height="260" fill="#211f1c" stroke="#f5efe5" stroke-opacity=".16"/>
+    <text x="406" y="222" fill="#b8d66b" font-size="13" font-weight="700">02 TRIAGE</text>
+    <text x="406" y="266" fill="#f5efe5" font-size="24" font-weight="700">Classify</text>
+    <text x="406" y="300" fill="#d9ccbb" font-size="15">Clean the report, detect</text>
+    <text x="406" y="324" fill="#d9ccbb" font-size="15">noise, infer sentiment,</text>
+    <text x="406" y="348" fill="#d9ccbb" font-size="15">and preserve an audit run.</text>
+    <rect x="694" y="218" width="214" height="188" fill="#211f1c" stroke="#f5efe5" stroke-opacity=".16"/>
+    <text x="718" y="258" fill="#b8d66b" font-size="13" font-weight="700">03 RULES</text>
+    <text x="718" y="302" fill="#f5efe5" font-size="24" font-weight="700">Escalate</text>
+    <text x="718" y="336" fill="#d9ccbb" font-size="15">Use plan, account,</text>
+    <text x="718" y="360" fill="#d9ccbb" font-size="15">environment, and custom</text>
+    <text x="718" y="384" fill="#d9ccbb" font-size="15">fields to route urgency.</text>
+    <rect x="980" y="182" width="204" height="260" fill="#211f1c" stroke="#e66a5c" stroke-opacity=".42"/>
+    <text x="1004" y="222" fill="#b8d66b" font-size="13" font-weight="700">04 HANDOFF</text>
+    <text x="1004" y="266" fill="#f5efe5" font-size="24" font-weight="700">Act</text>
+    <text x="1004" y="300" fill="#d9ccbb" font-size="15">Claim, resolve, reject,</text>
+    <text x="1004" y="324" fill="#d9ccbb" font-size="15">or create structured</text>
+    <text x="1004" y="348" fill="#d9ccbb" font-size="15">Linear and Jira issues.</text>
+  </g>
+  <g fill="none" stroke="#b8d66b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M318 312h48"/>
+    <path d="M354 300l12 12-12 12"/>
+    <path d="M632 312h46"/>
+    <path d="M666 300l12 12-12 12"/>
+    <path d="M918 312h46"/>
+    <path d="M952 300l12 12-12 12"/>
+  </g>
+  <rect x="248" y="500" width="784" height="92" fill="#0c0b0a" stroke="#f5efe5" stroke-opacity=".14"/>
+  <text x="278" y="538" fill="#f5efe5" font-family="Arial, sans-serif" font-size="18" font-weight="700">Knowledge base deflection stays in the loop</text>
+  <text x="278" y="568" fill="#a49b8e" font-family="Arial, sans-serif" font-size="15">Published articles answer repeat questions before the queue gets another low-signal ticket.</text>
+</svg>
+

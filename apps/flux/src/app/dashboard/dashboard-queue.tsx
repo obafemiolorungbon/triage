@@ -9,11 +9,12 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
 import { EmptyState as DashboardEmptyState } from '../../components/ui/empty-state';
 import { EscalationPill, StatusDot, StatusPill } from '../../components/ui/status';
 import { KanbanBoard } from './kanban-board';
+import { TicketPreviewDrawer } from './ticket-preview-drawer';
 
 const STATUSES: TicketStatus[] = [
   'new',
@@ -101,6 +102,7 @@ function StatusCell({
 export function DashboardQueue() {
   const router = useRouter();
   const sp = useSearchParams();
+  const [previewTicketId, setPreviewTicketId] = useState<string | null>(null);
   const listQs = useListQueryString();
   const listQueryKey = ['tickets', listQs] as const;
   const view = sp.get('view') === 'kanban' ? 'kanban' : 'table';
@@ -291,8 +293,8 @@ export function DashboardQueue() {
           title={hasFilters ? 'No tickets match this view' : 'No feedback has arrived yet'}
           description={
             hasFilters
-              ? 'This queue is clear for the current filters. Reset the view or create a ticket manually.'
-              : 'Publish a widget on your site or create the first ticket manually to start triaging feedback.'
+              ? 'This queue is clear for the current filters. Reset the view or adjust the criteria.'
+              : 'Publish a widget on your site to start triaging customer feedback.'
           }
           actions={
             <>
@@ -301,9 +303,6 @@ export function DashboardQueue() {
                   Reset filters
                 </Link>
               )}
-              <Link href="/submit" className="btn-primary">
-                Create ticket
-              </Link>
               <Link href="/dashboard/widgets" className="btn-ghost text-paper-400">
                 Configure widgets
               </Link>
@@ -315,7 +314,11 @@ export function DashboardQueue() {
       {data && !isLoading && data.items.length > 0 && (
         <>
           {view === 'kanban' ? (
-            <KanbanBoard tickets={data.items} listQueryKey={listQueryKey} />
+            <KanbanBoard
+              tickets={data.items}
+              listQueryKey={listQueryKey}
+              onOpenTicket={setPreviewTicketId}
+            />
           ) : (
             <div className="surface overflow-hidden rounded-2xl">
               <div className="overflow-x-auto scrollbar-thin">
@@ -391,6 +394,10 @@ export function DashboardQueue() {
                         <td className="px-4 py-3 text-right align-middle">
                           <Link
                             href={`/dashboard/${f.id}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setPreviewTicketId(f.id);
+                            }}
                             className="inline-flex items-center gap-1 text-xs text-paper-400 opacity-100 transition-all hover:text-lime md:opacity-0 md:group-hover:opacity-100"
                           >
                             Open
@@ -407,6 +414,12 @@ export function DashboardQueue() {
             </div>
           )}
         </>
+      )}
+      {previewTicketId && (
+        <TicketPreviewDrawer
+          ticketId={previewTicketId}
+          onClose={() => setPreviewTicketId(null)}
+        />
       )}
     </div>
   );

@@ -48,7 +48,13 @@ function colId(status: TicketStatus) {
   return `col:${status}`;
 }
 
-function SortableCard({ ticket }: { ticket: TicketDto }) {
+function SortableCard({
+  ticket,
+  onOpenTicket,
+}: {
+  ticket: TicketDto;
+  onOpenTicket?: (ticketId: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: ticket.id,
@@ -71,7 +77,13 @@ function SortableCard({ ticket }: { ticket: TicketDto }) {
         <Link
           href={`/dashboard/${ticket.id}`}
           className="text-[13px] font-medium text-paper-100 leading-snug line-clamp-2 hover:text-lime transition-colors"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onOpenTicket) {
+              e.preventDefault();
+              onOpenTicket(ticket.id);
+            }
+          }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           {ticket.category ?? 'Untitled'}
@@ -114,9 +126,11 @@ function SortableCard({ ticket }: { ticket: TicketDto }) {
 function KanbanColumn({
   status,
   tickets,
+  onOpenTicket,
 }: {
   status: TicketStatus;
   tickets: TicketDto[];
+  onOpenTicket?: (ticketId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: colId(status) });
   const ids = tickets.map((t) => t.id);
@@ -151,7 +165,7 @@ function KanbanColumn({
             />
           )}
           {tickets.map((t) => (
-            <SortableCard key={t.id} ticket={t} />
+            <SortableCard key={t.id} ticket={t} onOpenTicket={onOpenTicket} />
           ))}
         </div>
       </SortableContext>
@@ -171,9 +185,11 @@ function resolveDropStatus(
 export function KanbanBoard({
   tickets,
   listQueryKey,
+  onOpenTicket,
 }: {
   tickets: TicketDto[];
   listQueryKey: readonly unknown[];
+  onOpenTicket?: (ticketId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const client = browserTicketsClient();
@@ -225,7 +241,12 @@ export function KanbanBoard({
       >
         <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-4 -mx-4 md:-mx-6 px-4 md:px-6">
           {COLUMNS.map((status) => (
-            <KanbanColumn key={status} status={status} tickets={byStatus(status)} />
+            <KanbanColumn
+              key={status}
+              status={status}
+              tickets={byStatus(status)}
+              onOpenTicket={onOpenTicket}
+            />
           ))}
         </div>
       </DndContext>
@@ -237,7 +258,7 @@ export function KanbanBoard({
             boxShadow: 'inset 0 0 0 1px rgba(255, 94, 94, 0.25)',
           }}
         >
-          Could not update status · reverted.
+          Could not update status - reverted.
         </div>
       )}
     </>

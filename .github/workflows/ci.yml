@@ -34,6 +34,10 @@ jobs:
       APP_URL: http://localhost:3000
       API_PUBLIC_URL: http://localhost:4200
       BETTER_AUTH_URL: http://localhost:4200
+      NEXT_PUBLIC_API_URL: http://localhost:4200
+      INTERNAL_API_URL: http://localhost:4200
+      NEXT_PUBLIC_WIDGET_ORIGIN: http://localhost:3000
+      NEXT_PUBLIC_WIDGET_KEY: local-dev-widget
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,8 +61,14 @@ jobs:
       - name: Prisma migrate (CI DB)
         run: pnpm exec prisma migrate deploy --schema=libs/db/prisma/schema.prisma
 
-      - name: Nx build backend + flux
-        run: pnpm exec nx run-many -t build --projects=backend,@triage/flux --parallel=1
+      - name: Lint public apps and backend
+        run: pnpm exec nx run-many -t lint --projects=backend,@triage/flux,@triage/site,@triage/playground --parallel=1
+
+      - name: Backend config safety tests
+        run: pnpm exec nx run backend:test --testFile=apps/backend/src/config/env.schema.spec.ts
+
+      - name: Build backend and web apps
+        run: pnpm exec nx run-many -t build --projects=backend,@triage/flux,@triage/site,@triage/playground --parallel=1
 
       - name: Docker build smoke (API image)
         run: docker build -f apps/backend/Dockerfile .

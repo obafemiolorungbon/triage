@@ -789,7 +789,7 @@ function WidgetPageInner() {
           <Field label="Images">
             <div className="space-y-3">
               <input
-                className="input file:mr-3 file:rounded-md file:border-0 file:bg-paper-100/10 file:px-3 file:py-1.5 file:text-paper-100"
+                className="file-input"
                 type="file"
                 accept={config.allowedMimeTypes.join(',')}
                 multiple

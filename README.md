@@ -2,6 +2,8 @@
 
 Self-hosted feedback intake for product and support teams.
 
+![Triage product workflow map](docs/assets/triage-product-map.svg)
+
 Triage gives companies an embeddable website/app widget, AI-assisted feedback
 classification, metadata-based escalation, an internal support Kanban, and
 manual or automatic handoff to Linear or Jira.
@@ -38,6 +40,8 @@ compliance workflows are tracked as roadmap items.
 - [Widget implementation roadmap](docs/widget-implementation-plan.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
 
 ## Core Flow
 
@@ -71,7 +75,16 @@ docker compose up -d postgres redis minio minio-init
 pnpm db:migrate
 ```
 
-5. Start the API, worker, dashboard, and marketing site:
+5. Seed the demo workspace, widget, KB article, and example feedback:
+
+```bash
+pnpm db:seed
+```
+
+The seed is idempotent. It creates a `local-dev-widget` widget key for the
+playground and varied feedback states for the dashboard queue.
+
+6. Start the API, worker, dashboard, and marketing site:
 
 ```bash
 pnpm exec nx run backend:serve
@@ -91,6 +104,13 @@ PowerShell:
 
 ```powershell
 $env:ADMIN_EMAIL="you@corp.com"; $env:ADMIN_PASSWORD="YourSecurePass"; $env:API_URL="http://localhost:4200"; pnpm seed:admin
+```
+
+For the shortest local path after dependencies and migrations, use:
+
+```bash
+pnpm db:seed
+pnpm dev
 ```
 
 ## URLs
@@ -323,6 +343,17 @@ safer, easier to deploy, and easier to operate:
 | `pnpm build:playground` | Build the widget playground app |
 | `pnpm db:migrate` | Run Prisma migrate dev |
 | `pnpm db:migrate:deploy` | Run Prisma migrate deploy |
-| `pnpm db:seed` | Seed demo feedback |
+| `pnpm db:seed` | Seed demo workspace, widget, KB article, and feedback |
 | `pnpm seed:admin` | Create or promote an admin user |
 | `pnpm docker:up` | Run `docker compose up --build` |
+
+## Repository Health
+
+The public repository includes:
+
+- GitHub issue templates for bugs and feature requests.
+- A pull request template with verification and risk prompts.
+- `CODEOWNERS`, Dependabot configuration, code of conduct, changelog, security
+  policy, and contributing guide.
+- CI checks for linting, backend config safety tests, backend/web builds,
+  migrations, and an API Docker image smoke build.

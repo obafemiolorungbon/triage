@@ -89,7 +89,7 @@ export function NotificationBell({ variant = 'top' }: { variant?: 'top' | 'sideb
       <button
         type="button"
         className={`relative inline-flex h-9 items-center justify-center rounded-full text-paper-300 transition-colors hover:bg-paper-100/5 hover:text-paper-50 ${
-          variant === 'sidebar' ? 'flex-1 gap-2 px-3' : 'w-9'
+          variant === 'sidebar' ? 'w-9 shrink-0' : 'w-9'
         }`}
         onClick={() => {
           setOpen((prev) => {
@@ -110,7 +110,6 @@ export function NotificationBell({ variant = 'top' }: { variant?: 'top' | 'sideb
             strokeLinejoin="round"
           />
         </svg>
-        {variant === 'sidebar' && <span className="text-sm">Notifications</span>}
         {unread > 0 && (
           <span className="absolute top-1.5 right-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-lime text-[10px] font-mono font-semibold text-ink-900 tabular-nums shadow-glow-lime">
             {unread > 9 ? '9+' : unread}
@@ -124,7 +123,7 @@ export function NotificationBell({ variant = 'top' }: { variant?: 'top' | 'sideb
           aria-label="Notifications"
           className={`z-50 animate-fade-in overflow-hidden rounded-2xl surface-raised ${
             variant === 'sidebar'
-              ? 'fixed bottom-20 left-5 w-[min(360px,calc(100vw-40px))]'
+              ? 'fixed left-[300px] top-5 w-[min(360px,calc(100vw-332px))]'
               : 'absolute right-0 mt-2 w-[min(360px,calc(100vw-32px))]'
           }`}
         >

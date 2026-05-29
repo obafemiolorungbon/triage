@@ -29,10 +29,6 @@ describe('SessionGuard', () => {
   });
 
   it('allows @Public routes without session', async () => {
-    class C {
-      @Public()
-      m() {}
-    }
     const ctx = mockHttpExecutionContext({ headers: {} });
     jest.spyOn(Reflector.prototype, 'getAllAndOverride').mockImplementation(
       (key: string) => {

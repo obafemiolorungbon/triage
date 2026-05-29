@@ -8,6 +8,7 @@ import { browserTicketsClient } from '../../../lib/tickets-browser-client';
 export function TicketActions({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [comment, setComment] = useState('');
+  const [dialog, setDialog] = useState<null | 'claim' | 'resolve' | 'reject'>(null);
   const client = browserTicketsClient();
 
   const invalidate = () => {
@@ -36,12 +37,12 @@ export function TicketActions({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="space-y-2">
         <button
           type="button"
-          className="btn-primary btn-sm"
+          className="btn-primary btn-sm w-full"
           disabled={patchMutation.isPending}
-          onClick={() => patchMutation.mutate('claimed')}
+          onClick={() => setDialog('claim')}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
             <path d="M2 6l3 3L10 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -50,16 +51,11 @@ export function TicketActions({ id }: { id: string }) {
         </button>
         <button
           type="button"
-          className="btn-secondary btn-sm"
+          className="btn-secondary btn-sm w-full"
           disabled={patchMutation.isPending}
-          onClick={() => patchMutation.mutate('resolved')}
-          style={{
-            background: 'rgba(74, 222, 128, 0.08)',
-            color: '#4ADE80',
-            boxShadow: 'inset 0 0 0 1px rgba(74, 222, 128, 0.25)',
-          }}
+          onClick={() => patchMutation.mutate('in_progress')}
         >
-          Resolve
+          Move to in progress
         </button>
       </div>
 
@@ -68,15 +64,20 @@ export function TicketActions({ id }: { id: string }) {
           type="button"
           className="btn-secondary btn-sm"
           disabled={patchMutation.isPending}
-          onClick={() => patchMutation.mutate('in_progress')}
+          onClick={() => setDialog('resolve')}
+          style={{
+            background: 'rgba(74, 222, 128, 0.08)',
+            color: '#4ADE80',
+            boxShadow: 'inset 0 0 0 1px rgba(74, 222, 128, 0.25)',
+          }}
         >
-          In progress
+          Resolve
         </button>
         <button
           type="button"
           className="btn-secondary btn-sm"
           disabled={patchMutation.isPending}
-          onClick={() => patchMutation.mutate('rejected')}
+          onClick={() => setDialog('reject')}
         >
           Reject
         </button>
@@ -98,8 +99,11 @@ export function TicketActions({ id }: { id: string }) {
 
       <div className="flex flex-col gap-3">
         <span className="text-2xs font-mono uppercase tracking-wider text-paper-500">
-          External issue
+          Engineering handoff
         </span>
+        <p className="text-xs leading-5 text-paper-500">
+          Create a linked issue with the feedback text and triage context.
+        </p>
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -107,7 +111,7 @@ export function TicketActions({ id }: { id: string }) {
             disabled={issueMutation.isPending}
             onClick={() => issueMutation.mutate('linear')}
           >
-            Linear
+            Send to Linear
           </button>
           <button
             type="button"
@@ -115,7 +119,7 @@ export function TicketActions({ id }: { id: string }) {
             disabled={issueMutation.isPending}
             onClick={() => issueMutation.mutate('jira')}
           >
-            Jira
+            Send to Jira
           </button>
         </div>
         {issueMutation.isError && (
@@ -153,7 +157,7 @@ export function TicketActions({ id }: { id: string }) {
           disabled={commentMutation.isPending || !comment.trim()}
           onClick={() => commentMutation.mutate(comment.trim())}
         >
-          {commentMutation.isPending ? '…' : 'Post'}
+          {commentMutation.isPending ? 'Posting' : 'Post'}
         </button>
         {commentMutation.isError && (
           <div
@@ -166,6 +170,86 @@ export function TicketActions({ id }: { id: string }) {
             {String(commentMutation.error)}
           </div>
         )}
+      </div>
+
+      {dialog && (
+        <ActionDialog
+          kind={dialog}
+          busy={patchMutation.isPending}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            const nextStatus: TicketStatus =
+              dialog === 'claim'
+                ? 'claimed'
+                : dialog === 'resolve'
+                  ? 'resolved'
+                  : 'rejected';
+            patchMutation.mutate(nextStatus, {
+              onSuccess: () => setDialog(null),
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ActionDialog({
+  kind,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  kind: 'claim' | 'resolve' | 'reject';
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = {
+    claim: {
+      title: 'Claim this ticket?',
+      body: 'Claiming moves the ticket into your work queue and signals that you are handling it. It does not resolve the issue or notify the submitter.',
+      confirm: 'Claim ticket',
+    },
+    resolve: {
+      title: 'Resolve this ticket?',
+      body: 'Resolve only when the feedback has been handled or no further internal action is needed.',
+      confirm: 'Resolve ticket',
+    },
+    reject: {
+      title: 'Reject this ticket?',
+      body: 'Rejecting closes this item as not actionable. The ticket remains in history for reporting and audit.',
+      confirm: 'Reject ticket',
+    },
+  }[kind];
+
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-ink-950/72 px-4 backdrop-blur-[2px]">
+      <div
+        role={kind === 'claim' ? 'dialog' : 'alertdialog'}
+        aria-modal="true"
+        className="surface-raised w-full max-w-sm rounded-xl p-5"
+      >
+        <h3 className="text-base font-medium text-paper-50">{copy.title}</h3>
+        <p className="mt-2 text-sm leading-6 text-paper-400">{copy.body}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            className="btn-ghost btn-sm text-paper-400"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={kind === 'claim' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? 'Working' : copy.confirm}
+          </button>
+        </div>
       </div>
     </div>
   );

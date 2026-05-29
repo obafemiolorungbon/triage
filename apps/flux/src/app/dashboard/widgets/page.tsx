@@ -25,6 +25,7 @@ export default function WidgetsPage() {
   const client = browserTicketsClient();
   const queryClient = useQueryClient();
   const [selectedPalette, setSelectedPalette] = useState(WIDGET_PALETTES[0]);
+  const [createOpen, setCreateOpen] = useState(false);
   const widgetsQuery = useQuery({
     queryKey: ['widgets'],
     queryFn: () => client.listWidgets(),
@@ -38,7 +39,10 @@ export default function WidgetsPage() {
         accentColor: selectedPalette.accentColor,
         theme: paletteTheme(selectedPalette),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['widgets'] }),
+    onSuccess: () => {
+      setCreateOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['widgets'] });
+    },
   });
   const duplicateMutation = useMutation({
     mutationFn: (id: string) => client.duplicateWidget(id),
@@ -62,17 +66,41 @@ export default function WidgetsPage() {
         </div>
         <button
           type="button"
-          className="btn-primary"
-          disabled={createMutation.isPending}
-          onClick={() => createMutation.mutate()}
+          className={createOpen ? 'btn-secondary' : 'btn-primary'}
+          onClick={() => setCreateOpen((open) => !open)}
         >
-          Create widget
+          {createOpen ? 'Cancel' : 'Create widget'}
         </button>
       </header>
 
-      <section className="surface rounded-2xl p-5">
-        <PalettePresetPicker value={selectedPalette.id} onChange={setSelectedPalette} />
-      </section>
+      {createOpen && (
+        <section className="surface rounded-2xl p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-2xs uppercase tracking-wider text-paper-500">
+                New widget
+              </p>
+              <h2 className="mt-1 text-lg font-medium text-paper-50">
+                Choose a starting palette
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-paper-400">
+                The palette seeds the launcher, form surface, text, and success state. You can tune every value after creation.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-primary w-full lg:w-auto"
+              disabled={createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              {createMutation.isPending ? 'Creating' : 'Create with selected palette'}
+            </button>
+          </div>
+          <div className="mt-5">
+            <PalettePresetPicker value={selectedPalette.id} onChange={setSelectedPalette} />
+          </div>
+        </section>
+      )}
 
       {widgetsQuery.isLoading && (
         <div className="flex justify-center py-20">
@@ -95,8 +123,7 @@ export default function WidgetsPage() {
             <button
               type="button"
               className="btn-primary"
-              disabled={createMutation.isPending}
-              onClick={() => createMutation.mutate()}
+              onClick={() => setCreateOpen(true)}
             >
               Create widget
             </button>
