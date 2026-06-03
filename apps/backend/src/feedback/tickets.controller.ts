@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -31,13 +32,21 @@ export class TicketsController {
   @Get()
   @Roles('admin', 'agent')
   list(@Query() query: Record<string, string | string[] | undefined>, @Req() req: AuthedRequest) {
-    return this.feedback.list(query, req.session!.user.id);
+    const userId = req.session?.user.id;
+    if (!userId) throw new ForbiddenException();
+    return this.feedback.list(query, userId);
   }
 
   @Get(':id/similar')
   @Roles('admin', 'agent')
   similar(@Param('id') id: string) {
     return this.feedback.similar(id);
+  }
+
+  @Get(':id/comments')
+  @Roles('admin', 'agent')
+  comments(@Param('id') id: string) {
+    return this.feedback.listComments(id);
   }
 
   @Get(':id')

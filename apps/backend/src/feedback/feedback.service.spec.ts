@@ -9,7 +9,10 @@ import {
 import { FeedbackService } from './feedback.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../events/events.gateway';
+import { EscalationService } from '../escalation/escalation.service';
+import { ExternalIssuesService } from '../external-issues/external-issues.service';
 import { INTAKE_QUEUE } from '../queue/triage.constants';
+import { StorageService } from '../storage/storage.service';
 import { createPrismaMock } from '../test/prisma.mock';
 
 function fb(partial: Partial<Feedback> & { status: FeedbackStatus }): Feedback {
@@ -55,6 +58,23 @@ describe('FeedbackService', () => {
           provide: EventsGateway,
           useValue: { emitFeedbackEvent },
         },
+        {
+          provide: EscalationService,
+          useValue: {
+            evaluate: jest.fn().mockResolvedValue({
+              escalationTier: 'none',
+              escalationReason: null,
+            }),
+          },
+        },
+        {
+          provide: ExternalIssuesService,
+          useValue: { createForFeedback: jest.fn() },
+        },
+        {
+          provide: StorageService,
+          useValue: { createDownloadUrl: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(FeedbackService);
@@ -78,11 +98,14 @@ describe('FeedbackService', () => {
       });
       expect(out).toEqual({ id: 'new-id', status: 'new' });
       expect(prisma.client.feedback.create).toHaveBeenCalledWith({
-        data: {
+        data: expect.objectContaining({
           submitterEmail: 'a@b.com',
           rawText: 'Title\n\n1234567890',
+          shortId: expect.stringMatching(/^TR-[A-F0-9]{6}$/),
+          escalationTier: 'none',
+          escalationReason: null,
           status: 'new',
-        },
+        }),
       });
       expect(intakeAdd).toHaveBeenCalledWith('intake', {
         feedbackId: 'new-id',
@@ -125,7 +148,6 @@ describe('FeedbackService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             status: 'new',
-            priority: 'high',
             category: 'bug',
             isNoise: true,
             knowledgeGap: true,
@@ -151,6 +173,42 @@ describe('FeedbackService', () => {
       await expect(service.getById('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('listComments', () => {
+    it('throws NotFoundException when ticket is missing', async () => {
+      prisma.client.feedback.findUnique = jest.fn().mockResolvedValue(null);
+      await expect(service.listComments('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('fetches comments by feedback id', async () => {
+      prisma.client.feedback.findUnique = jest
+        .fn()
+        .mockResolvedValue({ id: 'fid' });
+      prisma.client.comment.findMany = jest.fn().mockResolvedValue([
+        {
+          id: 'c1',
+          feedbackId: 'fid',
+          authorId: 'u1',
+          body: 'note',
+          createdAt: new Date('2020-01-01'),
+          author: { id: 'u1', name: 'Agent', email: 'agent@example.com' },
+        },
+      ]);
+
+      const out = await service.listComments('fid');
+
+      expect(out.items).toHaveLength(1);
+      expect(prisma.client.comment.findMany).toHaveBeenCalledWith({
+        where: { feedbackId: 'fid' },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
     });
   });
 

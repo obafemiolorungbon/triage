@@ -13,6 +13,7 @@ export function TicketActions({ id }: { id: string }) {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+    queryClient.invalidateQueries({ queryKey: ['ticket', id, 'comments'] });
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
   };
 

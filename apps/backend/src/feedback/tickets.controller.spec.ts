@@ -20,6 +20,7 @@ describe('TicketsController', () => {
     list: jest.fn(),
     similar: jest.fn(),
     getById: jest.fn(),
+    listComments: jest.fn(),
     updateStatus: jest.fn(),
     addComment: jest.fn(),
   };
@@ -67,6 +68,12 @@ describe('TicketsController', () => {
   it('getOne delegates', async () => {
     feedback.getById.mockResolvedValue({ id: '1' });
     await expect(controller.getOne('1')).resolves.toEqual({ id: '1' });
+  });
+
+  it('comments delegates', async () => {
+    feedback.listComments.mockResolvedValue({ items: [] });
+    await expect(controller.comments('1')).resolves.toEqual({ items: [] });
+    expect(feedback.listComments).toHaveBeenCalledWith('1');
   });
 
   it('patch delegates', async () => {

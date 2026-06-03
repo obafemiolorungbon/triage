@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import type { CSSProperties } from 'react';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { getPublicApiBase } from '../../lib/api-base';
 
 type SubmissionType = 'bug' | 'idea' | 'question' | 'praise' | 'custom';
@@ -20,7 +20,13 @@ type FieldKind =
   | 'checkbox'
   | 'rating'
   | 'file';
-type FieldTarget = 'user' | 'metadata' | 'message' | 'title' | 'category' | 'severity';
+type FieldTarget =
+  | 'user'
+  | 'metadata'
+  | 'message'
+  | 'title'
+  | 'category'
+  | 'severity';
 type ThemeMode = 'auto' | 'light' | 'dark';
 type SuccessAnimation = 'none' | 'check' | 'thumbs-up';
 
@@ -129,6 +135,8 @@ const DEFAULT_FIELDS: WidgetField[] = [
     order: 20,
   },
 ];
+const DEFAULT_MESSAGE_FIELD = DEFAULT_FIELDS[1] as WidgetField;
+const MIN_FEEDBACK_LENGTH = 10;
 
 export default function WidgetPage() {
   return (
@@ -152,7 +160,9 @@ function WidgetPageInner() {
   const [submissionType, setSubmissionType] = useState<SubmissionType>('bug');
   const [message, setMessage] = useState('');
   const [title, setTitle] = useState('');
-  const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>({});
+  const [fieldValues, setFieldValues] = useState<Record<string, FieldValue>>(
+    {},
+  );
   const [user, setUser] = useState<Record<string, string>>({});
   const [metadata, setMetadata] = useState<Record<string, string>>({});
   const [userHash, setUserHash] = useState('');
@@ -175,13 +185,19 @@ function WidgetPageInner() {
   const [kbAnswerLoading, setKbAnswerLoading] = useState(false);
   const [kbDismissed, setKbDismissed] = useState(false);
   const [prefersDark, setPrefersDark] = useState(true);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const configQuery = useQuery({
     queryKey: ['widget-config', widgetKey, hostOrigin],
     enabled: Boolean(widgetKey),
     queryFn: async () => {
       const res = await fetch(`${api}/api/v1/widget/config/${widgetKey}`, {
-        headers: hostOrigin ? { 'X-Triage-Host-Origin': hostOrigin } : undefined,
+        headers: hostOrigin
+          ? { 'X-Triage-Host-Origin': hostOrigin }
+          : undefined,
       });
       if (!res.ok) throw new Error('Widget is not configured');
       return (await res.json()) as WidgetConfig;
@@ -192,7 +208,9 @@ function WidgetPageInner() {
   const typeOptions: SubmissionType[] = config?.enabledTypes?.length
     ? config.enabledTypes
     : ['bug'];
-  const draftKey = config ? `triage-widget-draft:${widgetKey}:${submissionType}` : '';
+  const draftKey = config
+    ? `triage-widget-draft:${widgetKey}:${submissionType}`
+    : '';
   const userFields = config?.enabledUserFields ?? ['email', 'name'];
   const metadataKeys = config?.enabledMetadataKeys ?? [];
   const required = useMemo(
@@ -206,7 +224,38 @@ function WidgetPageInner() {
         .sort((a, b) => a.order - b.order),
     [config?.fields],
   );
-  const deflectionText = String(fieldValues.message ?? message).trim();
+  const primaryMessageField = useMemo(
+    () =>
+      formFields.find((field) => field.target === 'message') ??
+      formFields.find((field) => field.kind === 'textarea') ??
+      DEFAULT_MESSAGE_FIELD,
+    [formFields],
+  );
+  const detailFields = useMemo(
+    () => formFields.filter((field) => field.key !== primaryMessageField.key),
+    [formFields, primaryMessageField.key],
+  );
+  const requiredDetailFields = detailFields.filter(
+    (field) =>
+      field.required &&
+      isEmptyFieldValue(
+        fieldValues[field.key] ??
+          (field.target === 'title' ? title : undefined),
+      ),
+  );
+  const missingRequiredUserFields = userFields.filter(
+    (field) => required.has(field) && !user[field]?.trim(),
+  );
+  const hasContactFields = userFields.length > 0;
+  const hasMoreDetails = detailFields.length > 0 || metadataKeys.length > 0;
+  const feedbackText = String(
+    fieldValues[primaryMessageField.key] ?? fieldValues.message ?? message,
+  ).trim();
+  const feedbackShortfall = Math.max(
+    0,
+    MIN_FEEDBACK_LENGTH - feedbackText.length,
+  );
+  const deflectionText = feedbackText;
   const themeStyle = useMemo(
     () => (config ? widgetThemeStyle(config, prefersDark) : undefined),
     [config, prefersDark],
@@ -220,7 +269,8 @@ function WidgetPageInner() {
     if (!window.matchMedia) return;
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     setPrefersDark(media.matches);
-    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    const onChange = (event: MediaQueryListEvent) =>
+      setPrefersDark(event.matches);
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, []);
@@ -236,7 +286,10 @@ function WidgetPageInner() {
       if (!event.data || event.data.type !== 'triage:context') return;
       const payload = event.data.payload as ContextPayload;
       setUser((prev) => ({ ...prev, ...stringifyRecord(payload.user) }));
-      setMetadata((prev) => ({ ...prev, ...stringifyRecord(payload.metadata) }));
+      setMetadata((prev) => ({
+        ...prev,
+        ...stringifyRecord(payload.metadata),
+      }));
       setUserHash(typeof payload.userHash === 'string' ? payload.userHash : '');
       if (payload.prefill) applyPrefill(payload.prefill);
       setSource(payload.source ?? {});
@@ -291,7 +344,7 @@ function WidgetPageInner() {
   const submitMutation = useMutation({
     mutationFn: async () => {
       const routedTitle = String(fieldValues.title ?? title).trim();
-      const routedMessage = String(fieldValues.message ?? message).trim();
+      const routedMessage = feedbackText;
       const res = await fetch(`${api}/api/v1/widget/feedback`, {
         method: 'POST',
         headers: widgetHeaders(hostOrigin),
@@ -310,8 +363,13 @@ function WidgetPageInner() {
           attachments,
         }),
       });
-      if (!res.ok) throw new Error(await errorMessage(res, 'Could not send feedback'));
-      return (await res.json()) as { id: string; shortId: string; status: string };
+      if (!res.ok)
+        throw new Error(await errorMessage(res, 'Could not send feedback'));
+      return (await res.json()) as {
+        id: string;
+        shortId: string;
+        status: string;
+      };
     },
     onSuccess: () => {
       if (draftKey) window.localStorage.removeItem(draftKey);
@@ -345,15 +403,23 @@ function WidgetPageInner() {
           },
         }),
       });
-      if (!res.ok) throw new Error(await errorMessage(res, 'Could not save rating'));
+      if (!res.ok)
+        throw new Error(await errorMessage(res, 'Could not save rating'));
       return res.json();
     },
     onSuccess: () => setSurveyDone(true),
   });
 
   useEffect(() => {
-    if (!draftKey || loadedDraftKey !== draftKey || submitMutation.isSuccess) return;
-    const payload: DraftPayload = { title, message, user, metadata, fields: fieldValues };
+    if (!draftKey || loadedDraftKey !== draftKey || submitMutation.isSuccess)
+      return;
+    const payload: DraftPayload = {
+      title,
+      message,
+      user,
+      metadata,
+      fields: fieldValues,
+    };
     window.localStorage.setItem(draftKey, JSON.stringify(payload));
   }, [
     draftKey,
@@ -453,7 +519,8 @@ function WidgetPageInner() {
     setUploading(true);
     try {
       for (const file of selected) {
-        if (!file.type.startsWith('image/')) throw new Error('Only image files are supported.');
+        if (!file.type.startsWith('image/'))
+          throw new Error('Only image files are supported.');
         if (!config.allowedMimeTypes.includes(file.type)) {
           throw new Error(`${file.name} is not an allowed image type.`);
         }
@@ -472,7 +539,8 @@ function WidgetPageInner() {
             sizeBytes: file.size,
           }),
         });
-        if (!uploadRes.ok) throw new Error(`Could not prepare upload for ${file.name}.`);
+        if (!uploadRes.ok)
+          throw new Error(`Could not prepare upload for ${file.name}.`);
         const upload = (await uploadRes.json()) as {
           url: string;
           storageKey: string;
@@ -495,7 +563,9 @@ function WidgetPageInner() {
         ]);
       }
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Could not upload image.');
+      setUploadError(
+        error instanceof Error ? error.message : 'Could not upload image.',
+      );
     } finally {
       setUploading(false);
     }
@@ -510,9 +580,9 @@ function WidgetPageInner() {
     setFieldValues((prev) => ({
       ...prev,
       ...Object.fromEntries(
-        Object.entries(prefill).filter(
-          ([key]) => !['type', 'title', 'message'].includes(key),
-        ).map(([key, value]) => [key, normalizeFieldValue(value)]),
+        Object.entries(prefill)
+          .filter(([key]) => !['type', 'title', 'message'].includes(key))
+          .map(([key, value]) => [key, normalizeFieldValue(value)]),
       ),
     }));
   }
@@ -544,78 +614,95 @@ function WidgetPageInner() {
         style={themeStyle}
       >
         {theme?.customCss && <style>{theme.customCss}</style>}
-        <button
-          type="button"
-          className="self-end btn-ghost"
-          onClick={() => window.parent.postMessage({ type: 'triage:close' }, '*')}
-        >
-          Close
-        </button>
         <div className="flex-1 grid place-items-center text-center">
-          {askSurvey ? (
-            <div className="w-full max-w-sm space-y-5">
-          <h1 className="text-2xl font-semibold tracking-tight text-paper-50">How was the experience?</h1>
-              <SurveyPicker
-                mode={config.surveyMode}
-                value={surveyScore}
-                onChange={setSurveyScore}
-              />
-              <textarea
-                className="textarea min-h-24"
-                placeholder="Optional comment"
-                value={surveyComment}
-                onChange={(e) => setSurveyComment(e.target.value)}
-              />
-              {surveyMutation.isError && (
-                <div className="rounded-lg px-3 py-2 text-sm text-[#FF9999] bg-[#ff5e5e14]">
-                  {String(surveyMutation.error)}
-                </div>
-              )}
-              <div className="flex justify-center gap-2">
+          <div className="w-full max-w-sm">
+            <SuccessAnimationMark
+              animation={theme?.successAnimation ?? 'check'}
+              brandColor={config.brandColor}
+              accentColor={config.accentColor}
+            />
+            <h1 className="text-2xl font-semibold tracking-tight text-paper-50">
+              Sent
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-paper-400">
+              {config.successMessage}
+            </p>
+            {shortId && (
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-xl bg-paper-100/[0.06] p-1 ring-1 ring-paper-100/10">
+                <span className="min-w-0 truncate px-2 font-mono text-sm text-paper-200">
+                  {shortId}
+                </span>
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={() => setSurveyDone(true)}
-                >
-                  Skip
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={!surveyScore || surveyMutation.isPending}
-                  style={{ background: config.brandColor, color: config.accentColor }}
-                  onClick={() => surveyMutation.mutate()}
-                >
-                  {surveyMutation.isPending ? 'Saving' : 'Submit rating'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <SuccessAnimationMark
-                animation={theme?.successAnimation ?? 'check'}
-                brandColor={config.brandColor}
-                accentColor={config.accentColor}
-              />
-              <h1 className="text-2xl font-semibold tracking-tight text-paper-50">{config.successMessage}</h1>
-              {shortId && (
-                <button
-                  type="button"
-                  className="mt-4 rounded-xl bg-paper-100/[0.06] px-3 py-2 font-mono text-sm text-paper-200 ring-1 ring-paper-100/10 hover:bg-paper-100/[0.09]"
+                  className="rounded-lg bg-paper-100/[0.08] px-2.5 py-1.5 text-xs font-medium text-paper-100 transition-colors hover:bg-paper-100/[0.13]"
                   onClick={async () => {
                     await navigator.clipboard?.writeText(shortId);
                     setCopiedShortId(true);
                   }}
                 >
-                  {copiedShortId ? 'Copied ' : 'Copy reference '}
-                  {shortId}
+                  {copiedShortId ? 'Copied' : 'Copy'}
                 </button>
-              )}
-              {theme?.poweredBy && (
-                <p className="mt-4 text-xs text-paper-500">Powered by Triage</p>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+            {askSurvey && (
+              <div className="mt-6 rounded-2xl bg-paper-100/[0.04] p-4 ring-1 ring-paper-100/10">
+                <h2 className="text-sm font-medium text-paper-100">
+                  Rate this experience
+                </h2>
+                <div className="mt-3">
+                  <SurveyPicker
+                    mode={config.surveyMode}
+                    value={surveyScore}
+                    onChange={setSurveyScore}
+                  />
+                </div>
+                <textarea
+                  className="textarea mt-3 min-h-20"
+                  placeholder="Optional comment"
+                  value={surveyComment}
+                  onChange={(e) => setSurveyComment(e.target.value)}
+                />
+                {surveyMutation.isError && (
+                  <div className="rounded-lg px-3 py-2 text-sm text-[#FF9999] bg-[#ff5e5e14]">
+                    {String(surveyMutation.error)}
+                  </div>
+                )}
+                <div className="mt-3 flex justify-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setSurveyDone(true)}
+                  >
+                    Skip
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!surveyScore || surveyMutation.isPending}
+                    style={{
+                      background: config.brandColor,
+                      color: config.accentColor,
+                    }}
+                    onClick={() => surveyMutation.mutate()}
+                  >
+                    {surveyMutation.isPending ? 'Saving' : 'Submit rating'}
+                  </button>
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn-secondary mt-8"
+              onClick={() =>
+                window.parent.postMessage({ type: 'triage:close' }, '*')
+              }
+            >
+              Close
+            </button>
+            {theme?.poweredBy && (
+              <p className="mt-4 text-xs text-paper-500">Powered by Triage</p>
+            )}
+          </div>
         </div>
       </main>
     );
@@ -633,9 +720,19 @@ function WidgetPageInner() {
       {theme?.customCss && <style>{theme.customCss}</style>}
       <form
         className="mx-auto flex max-w-md flex-col gap-4 rounded-[22px] border border-paper-100/[0.08] bg-paper-100/[0.025] p-4 shadow-[inset_0_1px_0_rgba(245,239,229,0.04)]"
+        onInvalid={() => setAttemptedSubmit(true)}
         onSubmit={(e) => {
           e.preventDefault();
           setAttemptedSubmit(true);
+          if (feedbackShortfall > 0) return;
+          if (requiredDetailFields.length > 0 && !showDetails) {
+            setShowDetails(true);
+            return;
+          }
+          if (missingRequiredUserFields.length > 0 && !showContact) {
+            setShowContact(true);
+            return;
+          }
           submitMutation.mutate();
         }}
       >
@@ -648,194 +745,322 @@ function WidgetPageInner() {
                 className="mb-3 h-8 max-w-40 object-contain"
               />
             )}
-            <h1 id="widget-title" className="text-2xl font-semibold tracking-tight text-paper-50">{config.title}</h1>
-            <p id="widget-description" className="mt-1 text-sm text-paper-400">{config.description}</p>
+            <h1
+              id="widget-title"
+              className="text-2xl font-semibold tracking-tight text-paper-50"
+            >
+              {config.title}
+            </h1>
+            <p id="widget-description" className="mt-1 text-sm text-paper-400">
+              {config.description}
+            </p>
           </div>
           <button
             type="button"
             className="btn-ghost"
-            onClick={() => window.parent.postMessage({ type: 'triage:close' }, '*')}
+            onClick={() =>
+              window.parent.postMessage({ type: 'triage:close' }, '*')
+            }
           >
             Close
           </button>
         </header>
 
+        <Field label="What happened?" helpText={primaryMessageField.helpText}>
+          <FieldControl
+            field={primaryMessageField}
+            value={fieldValues[primaryMessageField.key] ?? message}
+            invalid={
+              attemptedSubmit &&
+              (primaryMessageField.required || feedbackShortfall > 0) &&
+              feedbackShortfall > 0
+            }
+            onChange={(value) =>
+              setFieldValues((prev) => ({
+                ...prev,
+                [primaryMessageField.key]: value,
+              }))
+            }
+          />
+        </Field>
+        {feedbackShortfall > 0 &&
+          (attemptedSubmit || feedbackText.length > 0) && (
+            <p className="-mt-2 text-xs text-paper-500">
+              {feedbackShortfall} more character
+              {feedbackShortfall === 1 ? '' : 's'}
+            </p>
+          )}
+
         {typeOptions.length > 1 && (
-          <Field label="Type">
-            <div className="grid grid-cols-2 gap-2">
-              {typeOptions.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`rounded-xl px-3 py-2 text-sm capitalize ring-1 transition-colors ${
-                    submissionType === type
-                      ? 'bg-paper-100 text-ink-950 ring-paper-100'
-                      : 'bg-paper-100/[0.04] text-paper-300 ring-paper-100/10'
-                  }`}
-                  onClick={() => setSubmissionType(type)}
-                >
-                  {labelize(type)}
-                </button>
-              ))}
-            </div>
-          </Field>
+          <div className="flex flex-wrap gap-2" aria-label="Feedback type">
+            {typeOptions.map((type) => (
+              <button
+                key={type}
+                type="button"
+                className={`rounded-full px-3 py-1.5 text-xs capitalize ring-1 transition-colors ${
+                  submissionType === type
+                    ? 'bg-paper-100 text-ink-950 ring-paper-100'
+                    : 'bg-paper-100/[0.04] text-paper-300 ring-paper-100/10 hover:bg-paper-100/[0.07]'
+                }`}
+                onClick={() => setSubmissionType(type)}
+              >
+                {labelize(type)}
+              </button>
+            ))}
+          </div>
         )}
 
-        {formFields.map((field) => (
-          <Field key={field.key} label={field.label} helpText={field.helpText}>
-            <FieldControl
-              field={field}
-              value={fieldValues[field.key]}
-              invalid={attemptedSubmit && field.required && isEmptyFieldValue(fieldValues[field.key])}
-              onChange={(value) =>
-                setFieldValues((prev) => ({ ...prev, [field.key]: value }))
-              }
-            />
-          </Field>
-        ))}
-
-        {!kbDismissed && (kbLoading || kbSuggestions.length > 0 || kbAnswer) && (
-          <section className="rounded-xl bg-paper-100/[0.04] p-3 ring-1 ring-paper-100/10">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-medium text-paper-100">Suggested help</h2>
-                <p className="text-xs text-paper-500">
-                  Check these before sending a ticket.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="text-xs text-paper-500 hover:text-paper-100"
-                onClick={() => setKbDismissed(true)}
-              >
-                Hide
-              </button>
-            </div>
-            {kbLoading && <p className="mt-3 text-xs text-paper-500">Searching...</p>}
-            {kbSuggestions.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {kbSuggestions.map((item) => (
-                  <article
-                    key={item.chunkId}
-                    className="rounded-lg bg-ink-950/50 p-3 text-sm"
-                  >
-                    <h3 className="text-paper-100">{item.title}</h3>
-                    {item.heading && (
-                      <p className="mt-0.5 text-xs text-paper-500">{item.heading}</p>
-                    )}
-                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-paper-400">
-                      {item.body}
+        {!kbDismissed &&
+          (kbLoading || kbSuggestions.length > 0 || kbAnswer) && (
+            <section className="rounded-xl bg-paper-100/[0.035] p-3 ring-1 ring-paper-100/10">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-paper-500">
+                    Suggested help
+                  </h2>
+                  {kbLoading && (
+                    <p className="mt-2 text-sm text-paper-400">
+                      Checking help docs...
                     </p>
-                    <button
-                      type="button"
-                      className="mt-3 text-xs font-medium text-paper-100 hover:text-paper-300"
-                      onClick={() => markSolved(item.articleId, item.score)}
-                    >
-                      This solved it
-                    </button>
-                  </article>
-                ))}
+                  )}
+                  {kbSuggestions[0] && !kbAnswer && (
+                    <>
+                      <p className="mt-2 truncate text-sm text-paper-100">
+                        {kbSuggestions[0].title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-paper-500">
+                        {kbSuggestions[0].body}
+                      </p>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-paper-500 hover:text-paper-100"
+                  onClick={() => setKbDismissed(true)}
+                >
+                  Hide
+                </button>
               </div>
-            )}
-            {kbAnswer && (
-              <div className="mt-3 whitespace-pre-wrap rounded-lg bg-ink-950/70 p-3 text-sm leading-6 text-paper-200">
-                {kbAnswer}
+              {kbAnswer && (
+                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-ink-950/60 p-3 text-sm leading-6 text-paper-200">
+                  {kbAnswer}
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {kbSuggestions[0] && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() =>
+                      markSolved(
+                        kbSuggestions[0].articleId,
+                        kbSuggestions[0].score,
+                      )
+                    }
+                  >
+                    Solved
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={kbAnswerLoading}
+                  onClick={askKnowledgeBase}
+                >
+                  {kbAnswerLoading ? 'Asking' : 'Ask AI'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => setKbDismissed(true)}
+                >
+                  Keep writing
+                </button>
               </div>
-            )}
-            <div className="mt-3 flex gap-2">
+            </section>
+          )}
+
+        <div className="flex flex-wrap gap-2 border-y border-paper-100/[0.07] py-3">
+          {config.maxAttachmentsPerSubmit > 0 && (
+            <>
               <button
                 type="button"
                 className="btn-secondary btn-sm"
-                disabled={kbAnswerLoading}
-                onClick={askKnowledgeBase}
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
               >
-                {kbAnswerLoading ? 'Asking' : 'Ask AI'}
+                <PaperclipIcon />
+                {uploading
+                  ? 'Uploading'
+                  : attachments.length > 0
+                    ? `Attach (${attachments.length})`
+                    : 'Attach'}
               </button>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setKbDismissed(true)}
-              >
-                Submit anyway
-              </button>
-            </div>
-          </section>
-        )}
-
-        {userFields.map((field) => (
-          <Field key={field} label={labelize(field)}>
-            <input
-              className="input"
-              required={required.has(field)}
-              aria-invalid={attemptedSubmit && required.has(field) && !user[field] ? true : undefined}
-              type={field === 'email' ? 'email' : 'text'}
-              value={user[field] ?? ''}
-              onChange={(e) => setUser({ ...user, [field]: e.target.value })}
-            />
-          </Field>
-        ))}
-
-        {metadataKeys.map((key) => (
-          <Field key={key} label={labelize(key)}>
-            <input
-              className="input"
-              value={metadata[key] ?? ''}
-              onChange={(e) => setMetadata({ ...metadata, [key]: e.target.value })}
-            />
-          </Field>
-        ))}
-
-        {config.maxAttachmentsPerSubmit > 0 && (
-          <Field label="Images">
-            <div className="space-y-3">
               <input
-                className="file-input"
+                ref={fileInputRef}
+                className="sr-only"
                 type="file"
                 accept={config.allowedMimeTypes.join(',')}
                 multiple
                 disabled={uploading}
                 onChange={(e) => {
+                  setShowAttachments(true);
                   void uploadImages(e.target.files);
                   e.currentTarget.value = '';
                 }}
               />
+            </>
+          )}
+          {hasContactFields && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => setShowContact((next) => !next)}
+            >
+              {missingRequiredUserFields.length > 0
+                ? 'Contact required'
+                : 'Contact'}
+            </button>
+          )}
+          {hasMoreDetails && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => setShowDetails((next) => !next)}
+            >
+              {requiredDetailFields.length > 0 ? 'More required' : 'More'}
+            </button>
+          )}
+        </div>
+
+        {(showAttachments || attachments.length > 0 || uploadError) && (
+          <section className="space-y-3 rounded-xl bg-paper-100/[0.035] p-3 ring-1 ring-paper-100/10">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-paper-100">Attachments</p>
               <p className="text-xs text-paper-500">
-                {config.maxAttachmentsPerSubmit} images max,{' '}
-                {formatBytes(config.maxAttachmentBytes)} each.
+                {config.maxAttachmentsPerSubmit} max,{' '}
+                {formatBytes(config.maxAttachmentBytes)} each
               </p>
-              {attachments.length > 0 && (
-                <ul className="space-y-2">
-                  {attachments.map((attachment) => (
-                    <li
-                      key={attachment.storageKey}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-paper-100/[0.04] px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate text-paper-200">
-                        {attachment.fileName}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-xs text-paper-500 hover:text-paper-100"
-                        onClick={() =>
-                          setAttachments((prev) =>
-                            prev.filter((item) => item.storageKey !== attachment.storageKey),
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {uploading && <p className="text-xs text-paper-400">Uploading image...</p>}
-              {uploadError && (
-                <div className="rounded-lg px-3 py-2 text-sm text-[#FF9999] bg-[#ff5e5e14]">
-                  {uploadError}
-                </div>
-              )}
             </div>
-          </Field>
+            {attachments.length > 0 && (
+              <ul className="space-y-2">
+                {attachments.map((attachment) => (
+                  <li
+                    key={attachment.storageKey}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-paper-100/[0.04] px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate text-paper-200">
+                      {attachment.fileName}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-paper-500 hover:text-paper-100"
+                      onClick={() =>
+                        setAttachments((prev) =>
+                          prev.filter(
+                            (item) => item.storageKey !== attachment.storageKey,
+                          ),
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {uploadError && (
+              <div className="rounded-lg px-3 py-2 text-sm text-[#FF9999] bg-[#ff5e5e14]">
+                {uploadError}
+              </div>
+            )}
+          </section>
+        )}
+
+        {showContact && hasContactFields && (
+          <section className="space-y-3 rounded-xl bg-paper-100/[0.035] p-3 ring-1 ring-paper-100/10">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-paper-100">Contact</p>
+              <button
+                type="button"
+                className="text-xs text-paper-500 hover:text-paper-100"
+                onClick={() => setShowContact(false)}
+              >
+                Done
+              </button>
+            </div>
+            {userFields.map((field) => (
+              <Field key={field} label={labelize(field)}>
+                <input
+                  className="input"
+                  required={required.has(field)}
+                  aria-invalid={
+                    attemptedSubmit && required.has(field) && !user[field]
+                      ? true
+                      : undefined
+                  }
+                  type={field === 'email' ? 'email' : 'text'}
+                  value={user[field] ?? ''}
+                  onChange={(e) =>
+                    setUser({ ...user, [field]: e.target.value })
+                  }
+                />
+              </Field>
+            ))}
+          </section>
+        )}
+
+        {showDetails && hasMoreDetails && (
+          <section className="space-y-3 rounded-xl bg-paper-100/[0.035] p-3 ring-1 ring-paper-100/10">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-paper-100">More details</p>
+              <button
+                type="button"
+                className="text-xs text-paper-500 hover:text-paper-100"
+                onClick={() => setShowDetails(false)}
+              >
+                Done
+              </button>
+            </div>
+            {detailFields.map((field) => (
+              <Field
+                key={field.key}
+                label={field.label}
+                helpText={field.helpText}
+              >
+                <FieldControl
+                  field={field}
+                  value={
+                    fieldValues[field.key] ??
+                    (field.target === 'title' ? title : undefined)
+                  }
+                  invalid={
+                    attemptedSubmit &&
+                    field.required &&
+                    isEmptyFieldValue(
+                      fieldValues[field.key] ??
+                        (field.target === 'title' ? title : undefined),
+                    )
+                  }
+                  onChange={(value) =>
+                    setFieldValues((prev) => ({ ...prev, [field.key]: value }))
+                  }
+                />
+              </Field>
+            ))}
+            {metadataKeys.map((key) => (
+              <Field key={key} label={labelize(key)}>
+                <input
+                  className="input"
+                  value={metadata[key] ?? ''}
+                  onChange={(e) =>
+                    setMetadata({ ...metadata, [key]: e.target.value })
+                  }
+                />
+              </Field>
+            ))}
+          </section>
         )}
 
         {config.requireConsent && (
@@ -844,7 +1069,9 @@ function WidgetPageInner() {
               type="checkbox"
               className="mt-1"
               required
-              aria-invalid={attemptedSubmit && !consentAccepted ? true : undefined}
+              aria-invalid={
+                attemptedSubmit && !consentAccepted ? true : undefined
+              }
               checked={consentAccepted}
               onChange={(e) => setConsentAccepted(e.target.checked)}
             />
@@ -884,13 +1111,23 @@ function WidgetPageInner() {
         <button
           type="submit"
           className="btn-primary h-11 justify-center"
-          disabled={submitMutation.isPending || uploading || (config.requireConsent && !consentAccepted)}
+          disabled={
+            submitMutation.isPending ||
+            uploading ||
+            (config.requireConsent && !consentAccepted)
+          }
           style={{ background: config.brandColor, color: config.accentColor }}
         >
-          {uploading ? 'Uploading' : submitMutation.isPending ? 'Sending' : 'Send feedback'}
+          {uploading
+            ? 'Uploading'
+            : submitMutation.isPending
+              ? 'Sending'
+              : 'Send'}
         </button>
         {theme?.poweredBy && (
-          <p className="text-center text-xs text-paper-500">Powered by Triage</p>
+          <p className="text-center text-xs text-paper-500">
+            Powered by Triage
+          </p>
         )}
         {showShortcutHelp && (
           <div className="rounded-xl bg-paper-100/[0.04] p-3 text-xs leading-5 text-paper-400 ring-1 ring-paper-100/10">
@@ -918,6 +1155,23 @@ function Field({
       {children}
       {helpText && <span className="text-xs text-paper-500">{helpText}</span>}
     </label>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+    >
+      <path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </svg>
   );
 }
 
@@ -1039,7 +1293,9 @@ function FieldControl({
       placeholder={field.placeholder ?? undefined}
       value={String(value ?? '')}
       onChange={(e) =>
-        onChange(field.kind === 'number' ? Number(e.target.value) : e.target.value)
+        onChange(
+          field.kind === 'number' ? Number(e.target.value) : e.target.value,
+        )
       }
     />
   );
@@ -1115,11 +1371,7 @@ function SuccessAnimationMark({
       style={{ background: brandColor, color: accentColor }}
       aria-hidden
     >
-      <svg
-        viewBox="0 0 64 64"
-        fill="none"
-        className="h-9 w-9"
-      >
+      <svg viewBox="0 0 64 64" fill="none" className="h-9 w-9">
         {thumbs ? (
           <>
             <path
@@ -1232,15 +1484,24 @@ const DEFAULT_LIGHT_THEME: WidgetTheme = {
   textColor: '#17130E',
 };
 
-function effectiveWidgetTheme(config: WidgetConfig, prefersDark: boolean): WidgetTheme {
+function effectiveWidgetTheme(
+  config: WidgetConfig,
+  prefersDark: boolean,
+): WidgetTheme {
   const raw = { ...DEFAULT_DARK_THEME, ...(config.theme ?? {}) };
-  const mode = raw.darkMode === 'auto' ? (prefersDark ? 'dark' : 'light') : raw.darkMode;
+  const mode =
+    raw.darkMode === 'auto' ? (prefersDark ? 'dark' : 'light') : raw.darkMode;
   const hasDefaultDarkColors =
-    raw.surfaceColor.toLowerCase() === DEFAULT_DARK_THEME.surfaceColor.toLowerCase() &&
+    raw.surfaceColor.toLowerCase() ===
+      DEFAULT_DARK_THEME.surfaceColor.toLowerCase() &&
     raw.textColor.toLowerCase() === DEFAULT_DARK_THEME.textColor.toLowerCase();
 
   if (mode === 'light' && hasDefaultDarkColors) {
-    return { ...raw, surfaceColor: DEFAULT_LIGHT_THEME.surfaceColor, textColor: DEFAULT_LIGHT_THEME.textColor };
+    return {
+      ...raw,
+      surfaceColor: DEFAULT_LIGHT_THEME.surfaceColor,
+      textColor: DEFAULT_LIGHT_THEME.textColor,
+    };
   }
   return raw;
 }
@@ -1279,7 +1540,9 @@ function fontStack(fontFamily: string) {
 function relativeLuminance(color: string) {
   const hex = color.trim().replace('#', '');
   if (!/^[0-9a-f]{6}$/i.test(hex)) return 0;
-  const [r, g, b] = [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+  const [r, g, b] = [0, 2, 4].map(
+    (index) => parseInt(hex.slice(index, index + 2), 16) / 255,
+  );
   const channel = (value: number) =>
     value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);

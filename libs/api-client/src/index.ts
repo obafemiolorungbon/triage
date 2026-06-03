@@ -70,6 +70,27 @@ export type TicketStatus = TicketDto['status'];
 export type EscalationTier = TicketDto['escalationTier'];
 export type ExternalIssueProvider = 'linear' | 'jira';
 
+const ticketCommentSchema = z.object({
+  id: z.string(),
+  feedbackId: z.string(),
+  authorId: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  author: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string(),
+    })
+    .optional(),
+});
+
+export type TicketCommentDto = z.infer<typeof ticketCommentSchema>;
+
+const ticketCommentsResponseSchema = z.object({
+  items: z.array(ticketCommentSchema),
+});
+
 const listResponseSchema = z.object({
   items: z.array(ticketSchema),
   total: z.number(),
@@ -361,6 +382,15 @@ export function createApiClient(opts: ApiClientOptions) {
         method: 'GET',
         schema: ticketSchema,
       });
+    },
+    getTicketComments(id: string) {
+      return request<{ items: TicketCommentDto[] }>(
+        `${ticketsBase}/${id}/comments`,
+        {
+          method: 'GET',
+          schema: ticketCommentsResponseSchema,
+        },
+      );
     },
     getTicketAttachmentUrl(id: string, attachmentId: string) {
       return request<{ url: string }>(
