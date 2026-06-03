@@ -169,10 +169,29 @@ export class FeedbackService {
   async getById(id: string) {
     const fb = await this.prisma.client.feedback.findUnique({
       where: { id },
-      include: { externalIssueLinks: true, attachments: true },
+      include: {
+        externalIssueLinks: true,
+        attachments: { orderBy: { createdAt: 'asc' } },
+      },
     });
     if (!fb) throw new NotFoundException();
     return fb;
+  }
+
+  async listComments(id: string) {
+    const fb = await this.prisma.client.feedback.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!fb) throw new NotFoundException();
+    const items = await this.prisma.client.comment.findMany({
+      where: { feedbackId: id },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+    return { items };
   }
 
   async createAttachmentDownloadUrl(feedbackId: string, attachmentId: string) {
@@ -331,7 +350,8 @@ export class FeedbackService {
     return { id: c.id, createdAt: c.createdAt };
   }
 
-  async similar(_id: string) {
+  async similar(id: string) {
+    if (!id) return { items: [] as { id: string; score: number }[] };
     return { items: [] as { id: string; score: number }[] };
   }
 

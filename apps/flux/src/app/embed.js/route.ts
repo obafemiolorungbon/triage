@@ -3,7 +3,9 @@ import { NextRequest } from 'next/server';
 export function GET(req: NextRequest) {
   const base = new URL(req.url).origin;
   const apiBase =
-    process.env.NEXT_PUBLIC_API_URL ?? process.env.API_PUBLIC_URL ?? 'http://127.0.0.1:4200';
+    process.env.NEXT_PUBLIC_API_URL ??
+    process.env.API_PUBLIC_URL ??
+    'http://127.0.0.1:4200';
   const js = `
 (function () {
   if (window.TriageWidget && window.TriageWidget.__ready) return;
@@ -22,6 +24,7 @@ export function GET(req: NextRequest) {
   var config;
   var variant;
   var visible = false;
+  var panelOpen = false;
   var triggered = false;
 
   function fetchConfig(widgetKey) {
@@ -221,12 +224,38 @@ export function GET(req: NextRequest) {
     return ['right:20px', 'bottom:76px'];
   }
 
+  function panelBaseTransform() {
+    if (window.innerWidth < 640) return '';
+    var parts = panelPositionCss();
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].indexOf('transform:') === 0) return parts[i].slice('transform:'.length);
+    }
+    return '';
+  }
+
+  function panelTransform(open) {
+    var base = panelBaseTransform();
+    var motion = open ? 'translateY(0) scale(1)' : 'translateY(10px) scale(.985)';
+    return base ? base + ' ' + motion : motion;
+  }
+
+  function applyPanelState(open) {
+    if (!panel) return;
+    panel.style.opacity = open ? '1' : '0';
+    panel.style.visibility = open ? 'visible' : 'hidden';
+    panel.style.pointerEvents = open ? 'auto' : 'none';
+    panel.style.transform = panelTransform(open);
+    panel.style.transitionDelay = open ? '0s' : '0s,0s,.22s';
+    if (button) button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function ensureLauncher() {
     if (!scriptWidgetKey || button) return;
     button = document.createElement('button');
     button.type = 'button';
     button.innerHTML = iconSvg() + '<span>' + escapeHtml(launcherLabel()) + '</span>';
-    button.setAttribute('aria-label', 'Open feedback widget');
+    button.setAttribute('aria-label', 'Toggle feedback widget');
+    button.setAttribute('aria-expanded', 'false');
     button.style.cssText = [
       'position:fixed',
       'z-index:2147483000',
@@ -243,7 +272,10 @@ export function GET(req: NextRequest) {
       'align-items:center',
       'justify-content:center'
     ].concat(launcherPositionCss()).join(';');
-    button.onclick = open;
+    button.onclick = function () {
+      if (panelOpen) close();
+      else open();
+    };
     document.body.appendChild(button);
 
     panel = document.createElement('div');
@@ -252,10 +284,19 @@ export function GET(req: NextRequest) {
       'z-index:2147483000',
       'width:min(420px,calc(100vw - 32px))',
       'height:min(640px,calc(100dvh - 112px))',
-      'display:none',
+      'display:block',
       'border-radius:' + themeValue('borderRadius', '18px'),
       'overflow:hidden',
-      'box-shadow:' + shadowCss()
+      'box-sizing:border-box',
+      'background:' + themeValue('surfaceColor', '#11100E'),
+      'box-shadow:' + shadowCss(),
+      'opacity:0',
+      'visibility:hidden',
+      'pointer-events:none',
+      'transform:' + panelTransform(false),
+      'transform-origin:bottom right',
+      'transition:opacity .18s ease,transform .22s cubic-bezier(.2,.8,.2,1),visibility 0s linear .18s',
+      'will-change:opacity,transform'
     ].concat(panelPositionCss()).join(';');
     frame = document.createElement('iframe');
     frame.src = WIDGET_ORIGIN + '/widget?widgetKey=' + encodeURIComponent(scriptWidgetKey) + '&hostOrigin=' + encodeURIComponent(location.origin);
@@ -276,19 +317,21 @@ export function GET(req: NextRequest) {
     var vv = window.visualViewport;
     var availableHeight = vv ? vv.height : window.innerHeight;
     if (window.innerWidth < 640) {
-      panel.style.left = '0';
-      panel.style.right = '0';
-      panel.style.bottom = '0';
+      panel.style.left = '12px';
+      panel.style.right = '12px';
+      panel.style.bottom = '12px';
       panel.style.top = 'auto';
-      panel.style.transform = 'none';
-      panel.style.width = '100vw';
-      panel.style.height = Math.max(320, availableHeight) + 'px';
-      panel.style.borderRadius = '18px 18px 0 0';
+      panel.style.width = 'auto';
+      panel.style.height = Math.max(320, availableHeight - 24) + 'px';
+      panel.style.borderRadius = themeValue('borderRadius', '18px');
+      panel.style.transformOrigin = 'bottom center';
+      applyPanelState(panelOpen);
       return;
     }
     panel.style.width = 'min(420px,calc(100vw - 32px))';
     panel.style.height = 'min(640px,calc(100dvh - 112px))';
     panel.style.borderRadius = themeValue('borderRadius', '18px');
+    panel.style.transformOrigin = position.indexOf('left') > -1 ? 'bottom left' : 'bottom right';
     panel.style.left = '';
     panel.style.right = '';
     panel.style.top = '';
@@ -298,6 +341,7 @@ export function GET(req: NextRequest) {
       var index = part.indexOf(':');
       if (index > -1) panel.style.setProperty(part.slice(0, index), part.slice(index + 1));
     });
+    applyPanelState(panelOpen);
   }
 
   function sendContext() {
@@ -314,12 +358,14 @@ export function GET(req: NextRequest) {
     ensureLauncher();
     if (!panel || !canRender()) return;
     updatePanelSize();
-    panel.style.display = 'block';
+    panelOpen = true;
+    applyPanelState(true);
     sendContext();
   }
 
   function close() {
-    if (panel) panel.style.display = 'none';
+    panelOpen = false;
+    applyPanelState(false);
   }
 
   function revealLauncher() {

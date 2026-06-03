@@ -33,6 +33,12 @@ export function TicketDetailView({
     enabled: !!id && ticketQuery.isSuccess,
   });
 
+  const commentsQuery = useQuery({
+    queryKey: ['ticket', id, 'comments'],
+    queryFn: () => client.getTicketComments(id),
+    enabled: !!id && ticketQuery.isSuccess,
+  });
+
   if (ticketQuery.isLoading) {
     return (
       <div className="flex justify-center py-24">
@@ -56,6 +62,7 @@ export function TicketDetailView({
   const similar = similarQuery.data?.items ?? [];
   const title = ticket.category || ticket.submissionType || 'Feedback';
   const primaryText = ticket.cleanedText || ticket.rawText;
+  const comments = commentsQuery.data?.items ?? [];
 
   return (
     <div className={isDrawer ? 'space-y-5' : 'space-y-7'}>
@@ -112,6 +119,52 @@ export function TicketDetailView({
             <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-paper-100">
               {primaryText || <span className="text-paper-500">No feedback text captured.</span>}
             </p>
+          </section>
+
+          <section className="surface rounded-xl p-5 md:p-6">
+            <PanelTitle title="Comments" eyebrow={`${comments.length} internal notes`} />
+            {commentsQuery.isLoading ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-paper-500">
+                <span className="spinner !h-3.5 !w-3.5" />
+                Loading comments
+              </div>
+            ) : commentsQuery.isError ? (
+              <p className="mt-4 text-sm text-[#FF9999]">
+                Comments could not be loaded.
+              </p>
+            ) : comments.length === 0 ? (
+              <EmptyState
+                variant="similar"
+                tone="compact"
+                title="No comments yet"
+                description="Internal notes added from the action panel will appear here."
+                className="mt-4"
+              />
+            ) : (
+              <ol className="mt-4 space-y-3">
+                {comments.map((comment) => (
+                  <li
+                    key={comment.id}
+                    className="rounded-lg bg-paper-100/[0.035] px-4 py-3 ring-1 ring-paper-100/[0.055]"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-paper-100">
+                        {comment.author?.name || comment.author?.email || comment.authorId.slice(0, 8)}
+                      </span>
+                      <time
+                        dateTime={comment.createdAt}
+                        className="font-mono text-2xs uppercase tracking-wider text-paper-500"
+                      >
+                        {formatDateTime(comment.createdAt)}
+                      </time>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-paper-300">
+                      {comment.body}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
 
           {ticket.escalationReason && (
