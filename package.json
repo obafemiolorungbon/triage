@@ -61,7 +61,7 @@
     "class-validator": "^0.14.2",
     "cors": "^2.8.6",
     "daisyui": "^4.12.24",
-    "ioredis": "^5.8.2",
+    "ioredis": "^5.11.1",
     "next": "~16.1.6",
     "openai": "^4.104.0",
     "react": "^19.0.0",
