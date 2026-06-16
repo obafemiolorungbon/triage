@@ -52,7 +52,7 @@
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/websockets": "^11.0.0",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^7.8.0",
     "ai": "^4.3.19",
     "axios": "^1.6.0",
     "better-auth": "^1.5.7",
