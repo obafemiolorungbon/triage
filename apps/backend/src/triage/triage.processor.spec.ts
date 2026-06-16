@@ -13,6 +13,27 @@ describe('TriageProcessor', () => {
   const notifications = {
     notifyFeedbackTriaged: jest.fn().mockResolvedValue(undefined),
   };
+  const settings = {
+    getWorkspace: jest.fn().mockResolvedValue({
+      id: 'workspace-1',
+      industry: '',
+      autoCreateCritical: false,
+      autoCreateProvider: 'linear',
+    }),
+    getCompanyPromptContext: jest.fn().mockResolvedValue('Company: Triage'),
+  };
+  const escalation = {
+    evaluate: jest.fn().mockResolvedValue({
+      escalationTier: 'none',
+      escalationReason: null,
+    }),
+  };
+  const externalIssues = {
+    createForFeedback: jest.fn().mockResolvedValue(undefined),
+  };
+  const indexQueue = {
+    add: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -21,114 +42,106 @@ describe('TriageProcessor', () => {
       prisma.service as never,
       ai as never,
       notifications as never,
+      settings as never,
+      escalation as never,
+      externalIssues as never,
+      indexQueue as never,
     );
   });
 
   const job = (feedbackId: string) =>
     ({ data: { feedbackId } }) as Parameters<TriageProcessor['process']>[0];
 
-  it('returns early when feedback missing', async () => {
+  it('returns early when feedback is missing', async () => {
     prisma.client.feedback.findUnique = jest.fn().mockResolvedValue(null);
     await processor.process(job('missing'));
-    expect(notifications.notifyFeedbackTriaged).not.toHaveBeenCalled();
+    expect(indexQueue.add).not.toHaveBeenCalled();
   });
 
-  it('applies fallback when AI disabled', async () => {
+  it('indexes the deterministic fallback after triage completes', async () => {
     ai.isEnabled.mockReturnValue(false);
     prisma.client.feedback.findUnique = jest.fn().mockResolvedValue({
       id: 'f1',
       rawText: 'hello',
       submitterEmail: 'e@e.com',
+      metadata: null,
+      userContext: null,
     });
     prisma.client.feedback.update = jest.fn().mockResolvedValue({});
+
     await processor.process(job('f1'));
+
     expect(prisma.client.feedback.update).toHaveBeenCalledWith({
       where: { id: 'f1' },
       data: expect.objectContaining({
         status: 'triaged',
         category: 'other',
-        priority: 'low',
         sentiment: 'neutral',
       }),
     });
-    expect(notifications.notifyFeedbackTriaged).toHaveBeenCalledWith({
-      to: 'e@e.com',
-      feedbackId: 'f1',
-      category: 'other',
-      priority: 'low',
-    });
-  });
-
-  it('stores null industryContext when AI returns empty context', async () => {
-    ai.isEnabled.mockReturnValue(true);
-    ai.getIndustryContext.mockReturnValue('');
-    ai.triageTicket.mockResolvedValue({
-      cleanedText: 'clean',
-      category: 'other',
-      priority: 'low',
-      sentiment: 'neutral',
-      knowledgeGap: false,
-      suggestedTags: [],
-    });
-    prisma.client.feedback.findUnique = jest.fn().mockResolvedValue({
-      id: 'f1',
-      rawText: 'raw',
-      submitterEmail: 'u@u.com',
-    });
-    prisma.client.user.findMany = jest.fn().mockResolvedValue([]);
-    prisma.client.notification.create = jest.fn().mockResolvedValue({});
-    await processor.process(job('f1'));
-    expect(prisma.client.feedbackTriageRun.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        industryContext: null,
+    expect(indexQueue.add).toHaveBeenCalledWith(
+      'index-feedback',
+      { feedbackId: 'f1' },
+      expect.objectContaining({
+        attempts: 4,
+        backoff: { type: 'exponential', delay: 2_000 },
       }),
-    });
+    );
   });
 
-  it('runs full triage when AI enabled', async () => {
+  it('runs AI triage then queues indexing', async () => {
     ai.isEnabled.mockReturnValue(true);
-    ai.getIndustryContext.mockReturnValue('ctx');
+    ai.getIndustryContext.mockReturnValue('support');
     ai.triageTicket.mockResolvedValue({
       cleanedText: 'clean',
       category: 'bug',
       priority: 'high',
       sentiment: 'negative',
       knowledgeGap: true,
-      suggestedTags: ['a'],
+      suggestedTags: ['payments'],
+    });
+    escalation.evaluate.mockResolvedValue({
+      escalationTier: 'critical',
+      escalationReason: 'Many affected users',
+    });
+    settings.getWorkspace.mockResolvedValue({
+      id: 'workspace-1',
+      industry: '',
+      autoCreateCritical: false,
+      autoCreateProvider: 'linear',
     });
     prisma.client.feedback.findUnique = jest.fn().mockResolvedValue({
       id: 'f1',
       rawText: 'raw',
       submitterEmail: 'u@u.com',
+      metadata: null,
+      userContext: null,
     });
-    prisma.client.user.findMany = jest
-      .fn()
-      .mockResolvedValue([{ id: 'admin1' }]);
-    prisma.client.notification.create = jest.fn().mockResolvedValue({});
+    prisma.client.user.findMany = jest.fn().mockResolvedValue([]);
+
     await processor.process(job('f1'));
+
     expect(prisma.client.$transaction).toHaveBeenCalled();
     expect(notifications.notifyFeedbackTriaged).toHaveBeenCalledWith({
       to: 'u@u.com',
       feedbackId: 'f1',
       category: 'bug',
-      priority: 'high',
+      escalationTier: 'critical',
     });
-    expect(prisma.client.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'admin1',
-        title: 'Feedback triaged',
-      }),
-    });
+    expect(indexQueue.add).toHaveBeenCalledTimes(1);
   });
 
-  it('rethrows when triage fails', async () => {
+  it('does not queue indexing when triage fails', async () => {
     ai.isEnabled.mockReturnValue(true);
     ai.triageTicket.mockRejectedValue(new Error('boom'));
     prisma.client.feedback.findUnique = jest.fn().mockResolvedValue({
       id: 'f1',
       rawText: 'raw',
       submitterEmail: 'u@u.com',
+      metadata: null,
+      userContext: null,
     });
     await expect(processor.process(job('f1'))).rejects.toThrow('boom');
+    expect(indexQueue.add).not.toHaveBeenCalled();
   });
 });

@@ -4,10 +4,10 @@ const prisma = new PrismaClient();
 
 async function main() {
   const workspace = await prisma.workspace.upsert({
-    where: { slug: 'acme-demo' },
+    where: { slug: 'default' },
     update: {},
     create: {
-      slug: 'acme-demo',
+      slug: 'default',
       companyName: 'Acme Cloud',
       productDescription:
         'A B2B platform for usage-based billing, customer portals, and account operations.',

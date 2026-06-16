@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { AssistantModule } from '../assistant/assistant.module';
 import { EnvConfigModule } from '../config/config.module';
 import { DigestModule } from '../digest/digest.module';
 import { EventsModule } from '../events/events.module';
@@ -33,6 +34,7 @@ import { HealthController } from './health.controller';
     EventsModule,
     FeedbackModule,
     AnalyticsModule,
+    AssistantModule,
     NotificationsInAppModule,
     SettingsModule,
     WidgetAdminModule,

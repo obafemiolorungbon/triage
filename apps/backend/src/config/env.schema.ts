@@ -15,6 +15,12 @@ export const envSchema = z
     OPENROUTER_MODEL_EMBEDDING: z
       .string()
       .default('openai/text-embedding-3-small'),
+    ASSISTANT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(30 * 60_000)
+      .default(120_000),
     /** Short description of the product domain used to ground the triage prompt. */
     OPENROUTER_INDUSTRY_CONTEXT: z.string().optional().default(''),
     BETTER_AUTH_SECRET: z.string().min(32),

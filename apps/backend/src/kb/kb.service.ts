@@ -14,10 +14,8 @@ import {
 import type { Prisma } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  normalizeKbImport,
-  type NormalizedKbImportArticle,
-} from './kb-import';
+import { HybridRetrievalService } from '../retrieval/hybrid-retrieval.service';
+import { normalizeKbImport, type NormalizedKbImportArticle } from './kb-import';
 
 type SearchRow = {
   chunkId: string;
@@ -55,6 +53,7 @@ export class KbService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly retrieval: HybridRetrievalService,
   ) {}
 
   async listArticles() {
@@ -122,14 +121,20 @@ export class KbService {
   async previewImport(body: unknown) {
     const parsed = kbImportBodySchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
-    const plan = await this.planImport(parsed.data.provider, parsed.data.payload);
+    const plan = await this.planImport(
+      parsed.data.provider,
+      parsed.data.payload,
+    );
     return toImportResult(plan);
   }
 
   async importArticles(body: unknown) {
     const parsed = kbImportBodySchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
-    const plan = await this.planImport(parsed.data.provider, parsed.data.payload);
+    const plan = await this.planImport(
+      parsed.data.provider,
+      parsed.data.payload,
+    );
     const workspace = await this.defaultWorkspace();
     let imported = 0;
 
@@ -278,70 +283,16 @@ export class KbService {
     query: string;
     limit: number;
   }): Promise<SearchRow[]> {
-    const embedding = await this.safeEmbedding(input.query);
-    if (embedding) {
-      const vector = toVectorLiteral(embedding);
-      return this.prisma.client.$queryRawUnsafe<SearchRow[]>(
-        `
-        SELECT
-          c.id as "chunkId",
-          a.id as "articleId",
-          a.slug,
-          a.title,
-          c.heading,
-          c.body,
-          1 - (c.embedding <=> $2::vector) as score
-        FROM "kb_chunk" c
-        JOIN "kb_article" a ON a.id = c."articleId"
-        WHERE c."workspaceId" = $1
-          AND a.published = true
-          AND c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> $2::vector
-        LIMIT $3
-        `,
-        input.workspaceId,
-        vector,
-        input.limit,
-      );
-    }
-    return this.lexicalSearch(input);
-  }
-
-  private async lexicalSearch(input: {
-    workspaceId: string;
-    query: string;
-    limit: number;
-  }): Promise<SearchRow[]> {
-    const terms = tokenize(input.query);
-    const chunks = await this.prisma.client.kbChunk.findMany({
-      where: {
-        workspaceId: input.workspaceId,
-        article: { published: true },
-      },
-      include: { article: true },
-      take: 100,
-      orderBy: { createdAt: 'desc' },
-    });
-    return chunks
-      .map((chunk) => {
-        const haystack = `${chunk.article.title} ${chunk.heading ?? ''} ${chunk.body}`.toLowerCase();
-        const hits = terms.reduce(
-          (sum, term) => sum + (haystack.includes(term) ? 1 : 0),
-          0,
-        );
-        return {
-          chunkId: chunk.id,
-          articleId: chunk.articleId,
-          slug: chunk.article.slug,
-          title: chunk.article.title,
-          heading: chunk.heading,
-          body: chunk.body,
-          score: terms.length ? hits / terms.length : 0,
-        };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, input.limit);
+    const items = await this.retrieval.searchKnowledge(input);
+    return items.map((item) => ({
+      chunkId: item.chunkId,
+      articleId: item.articleId,
+      slug: item.slug,
+      title: item.title,
+      heading: item.heading,
+      body: item.body,
+      score: item.fusedScore,
+    }));
   }
 
   private async safeEmbedding(text: string) {
@@ -382,7 +333,8 @@ export class KbService {
       where: { widgetKey },
       select: { id: true, workspaceId: true, archivedAt: true },
     });
-    if (!widget || widget.archivedAt) throw new BadRequestException('Invalid widget key');
+    if (!widget || widget.archivedAt)
+      throw new BadRequestException('Invalid widget key');
     return widget;
   }
 
@@ -390,7 +342,8 @@ export class KbService {
     const workspace = await this.prisma.client.workspace.findUnique({
       where: { slug: 'default' },
     });
-    if (!workspace) throw new NotFoundException('Default workspace is not configured');
+    if (!workspace)
+      throw new NotFoundException('Default workspace is not configured');
     return workspace;
   }
 
@@ -430,7 +383,10 @@ export class KbService {
         seenSourceKeys.add(sourceKey);
       }
 
-      const existing = await this.findExistingImportTarget(workspace.id, article);
+      const existing = await this.findExistingImportTarget(
+        workspace.id,
+        article,
+      );
       const slug = await this.availableImportSlug({
         workspaceId: workspace.id,
         baseSlug: article.slug,
@@ -548,14 +504,6 @@ function splitArticle(markdown: string) {
     sections.push({ heading, body: body.join('\n').trim() });
   }
   return sections.length ? sections : [{ body: markdown.trim() }];
-}
-
-function tokenize(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((term) => term.length > 2)
-    .slice(0, 20);
 }
 
 function toVectorLiteral(values: number[]) {

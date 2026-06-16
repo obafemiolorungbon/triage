@@ -25,11 +25,15 @@
     "db:seed": "prisma db seed --schema=libs/db/prisma/schema.prisma",
     "db:studio": "prisma studio --schema=libs/db/prisma/schema.prisma",
     "seed:admin": "tsx apps/backend/src/scripts/create-admin.ts",
+    "index:feedback": "tsx --tsconfig apps/backend/tsconfig.app.json apps/backend/src/scripts/backfill-feedback-index.ts",
+    "seed:rag-feedback": "tsx --tsconfig apps/backend/tsconfig.app.json apps/backend/src/scripts/rag-sample-feedback.ts",
+    "verify:rag-feedback": "tsx --tsconfig apps/backend/tsconfig.app.json apps/backend/src/scripts/rag-sample-feedback.ts --verify",
+    "cleanup:rag-feedback": "tsx --tsconfig apps/backend/tsconfig.app.json apps/backend/src/scripts/rag-sample-feedback.ts --cleanup",
     "test": "nx run-many -t test --projects=backend",
     "test:cov": "nx run backend:test --coverage",
     "test:e2e": "nx run backend-e2e:e2e",
     "dev:clean-ports": "node tools/kill-dev-ports.mjs",
-    "dev": "pnpm dev:clean-ports && concurrently --kill-others --kill-others-on-fail -k -n api,worker,flux,site,play -c blue,magenta,green,yellow,cyan \"nx run backend:serve\" \"tsx apps/backend/src/worker-bootstrap.ts\" \"nx run @triage/flux:dev --port=3000\" \"nx run @triage/site:dev --port=3001\" \"nx run @triage/playground:dev --port=3002\""  
+    "dev": "pnpm dev:clean-ports && concurrently --kill-others --kill-others-on-fail -k -n api,worker,flux,site,play -c blue,magenta,green,yellow,cyan \"nx run backend:serve\" \"tsx --tsconfig apps/backend/tsconfig.worker.json apps/backend/src/worker-bootstrap.ts\" \"nx run @triage/flux:dev --port=3000\" \"nx run @triage/site:dev --port=3001\" \"nx run @triage/playground:dev --port=3002\""
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.3.24",

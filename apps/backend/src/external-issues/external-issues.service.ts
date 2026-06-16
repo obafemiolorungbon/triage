@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   ExternalIssueCreationMode,
@@ -49,7 +49,10 @@ type FeedbackForIssue = Prisma.FeedbackGetPayload<{
 
 @Injectable()
 export class ExternalIssuesService {
-  constructor(private readonly prisma: PrismaService = new PrismaService()) {}
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: PrismaService,
+  ) {}
 
   status() {
     return {

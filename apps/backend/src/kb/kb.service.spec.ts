@@ -30,9 +30,17 @@ describe('KbService imports', () => {
       },
     };
     const ai = { embedText: jest.fn().mockRejectedValue(new Error('off')) };
-    const service = new KbService(prisma as never, ai as never);
+    const retrieval = { searchKnowledge: jest.fn().mockResolvedValue([]) };
+    const service = new KbService(
+      prisma as never,
+      ai as never,
+      retrieval as never,
+    );
     const reindex = jest
-      .spyOn(service as unknown as { reindexArticle: (id: string) => Promise<void> }, 'reindexArticle')
+      .spyOn(
+        service as unknown as { reindexArticle: (id: string) => Promise<void> },
+        'reindexArticle',
+      )
       .mockResolvedValue(undefined);
     return { service, prisma, reindex };
   }

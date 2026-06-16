@@ -18,6 +18,7 @@ describe('TicketsController', () => {
   const feedback = {
     createTicket: jest.fn(),
     list: jest.fn(),
+    stats: jest.fn(),
     similar: jest.fn(),
     getById: jest.fn(),
     listComments: jest.fn(),
@@ -51,12 +52,36 @@ describe('TicketsController', () => {
   });
 
   it('list passes query and user id', async () => {
-    feedback.list.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
+    feedback.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
     const query = { page: '1' };
     await controller.list(query, {
       session: { user: { id: 'uid', role: 'admin' } },
     } as never);
     expect(feedback.list).toHaveBeenCalledWith(query, 'uid');
+  });
+
+  it('stats passes query and user id', async () => {
+    feedback.stats.mockResolvedValue({
+      total: 0,
+      byStatus: {
+        new: 0,
+        triaged: 0,
+        claimed: 0,
+        in_progress: 0,
+        resolved: 0,
+        rejected: 0,
+      },
+    });
+    const query = { knowledgeOnly: 'true' };
+    await controller.stats(query, {
+      session: { user: { id: 'uid', role: 'admin' } },
+    } as never);
+    expect(feedback.stats).toHaveBeenCalledWith(query, 'uid');
   });
 
   it('similar delegates', async () => {

@@ -31,10 +31,24 @@ export class TicketsController {
 
   @Get()
   @Roles('admin', 'agent')
-  list(@Query() query: Record<string, string | string[] | undefined>, @Req() req: AuthedRequest) {
+  list(
+    @Query() query: Record<string, string | string[] | undefined>,
+    @Req() req: AuthedRequest,
+  ) {
     const userId = req.session?.user.id;
     if (!userId) throw new ForbiddenException();
     return this.feedback.list(query, userId);
+  }
+
+  @Get('stats')
+  @Roles('admin', 'agent')
+  stats(
+    @Query() query: Record<string, string | string[] | undefined>,
+    @Req() req: AuthedRequest,
+  ) {
+    const userId = req.session?.user.id;
+    if (!userId) throw new ForbiddenException();
+    return this.feedback.stats(query, userId);
   }
 
   @Get(':id/similar')
@@ -66,7 +80,11 @@ export class TicketsController {
 
   @Patch(':id')
   @Roles('admin', 'agent')
-  patch(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthedRequest) {
+  patch(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() req: AuthedRequest,
+  ) {
     return this.feedback.updateStatus(id, body, req);
   }
 

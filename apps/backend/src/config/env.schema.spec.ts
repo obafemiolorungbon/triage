@@ -12,7 +12,26 @@ describe('validateEnv', () => {
     expect(out).not.toHaveProperty('_INVALID');
     if ('PORT' in (out as object)) {
       expect((out as { PORT: number }).PORT).toBe(4200);
+      expect(
+        (out as { ASSISTANT_TIMEOUT_MS: number }).ASSISTANT_TIMEOUT_MS,
+      ).toBe(120_000);
     }
+  });
+
+  it('parses a configured assistant timeout', () => {
+    const out = validateEnv({ ...base, ASSISTANT_TIMEOUT_MS: '180000' });
+    expect(out).not.toHaveProperty('_INVALID');
+    expect((out as { ASSISTANT_TIMEOUT_MS: number }).ASSISTANT_TIMEOUT_MS).toBe(
+      180_000,
+    );
+  });
+
+  it('rejects assistant timeouts longer than 30 minutes', () => {
+    const out = validateEnv({
+      ...base,
+      ASSISTANT_TIMEOUT_MS: 30 * 60_000 + 1,
+    });
+    expect(out).toMatchObject({ _INVALID: true });
   });
 
   it('parses BULL_BOARD_ENABLED with trimmed yes', () => {

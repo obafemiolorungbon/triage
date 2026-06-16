@@ -3,7 +3,11 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.schema';
 import { EnvConfigModule } from '../config/config.module';
-import { INTAKE_QUEUE, TRIAGE_QUEUE } from './triage.constants';
+import {
+  FEEDBACK_INDEX_QUEUE,
+  INTAKE_QUEUE,
+  TRIAGE_QUEUE,
+} from './triage.constants';
 
 @Module({
   imports: [
@@ -16,7 +20,11 @@ import { INTAKE_QUEUE, TRIAGE_QUEUE } from './triage.constants';
       }),
       inject: [ConfigService],
     }),
-    BullModule.registerQueue({ name: INTAKE_QUEUE }, { name: TRIAGE_QUEUE }),
+    BullModule.registerQueue(
+      { name: INTAKE_QUEUE },
+      { name: TRIAGE_QUEUE },
+      { name: FEEDBACK_INDEX_QUEUE },
+    ),
   ],
   exports: [BullModule],
 })

@@ -7,7 +7,11 @@ import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import type { Express, NextFunction, Request, Response } from 'express';
 import type { Env } from '../config/env.schema';
-import { INTAKE_QUEUE, TRIAGE_QUEUE } from './triage.constants';
+import {
+  FEEDBACK_INDEX_QUEUE,
+  INTAKE_QUEUE,
+  TRIAGE_QUEUE,
+} from './triage.constants';
 
 /** Mounted outside the Nest `api/v1` global prefix. */
 export const BULL_BOARD_BASE_PATH = '/admin/queues';
@@ -37,7 +41,10 @@ function basicAuthMiddleware(user: string, pass: string) {
  * Registers the Bull Board UI on the raw Express instance (same Redis as
  * BullModule). Off unless `BULL_BOARD_ENABLED` is truthy in env.
  */
-export function mountBullBoard(app: INestApplication, expressApp: Express): void {
+export function mountBullBoard(
+  app: INestApplication,
+  expressApp: Express,
+): void {
   const config = app.get(ConfigService<Env, true>);
   if (!config.get('BULL_BOARD_ENABLED', { infer: true })) {
     return;
@@ -51,9 +58,14 @@ export function mountBullBoard(app: INestApplication, expressApp: Express): void
 
   const intakeQueue = new Queue(INTAKE_QUEUE, { connection });
   const triageQueue = new Queue(TRIAGE_QUEUE, { connection });
+  const feedbackIndexQueue = new Queue(FEEDBACK_INDEX_QUEUE, { connection });
 
   createBullBoard({
-    queues: [new BullMQAdapter(intakeQueue), new BullMQAdapter(triageQueue)],
+    queues: [
+      new BullMQAdapter(intakeQueue),
+      new BullMQAdapter(triageQueue),
+      new BullMQAdapter(feedbackIndexQueue),
+    ],
     serverAdapter,
   });
 
