@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   escalationRuleSchema,
   workspaceConfigSchema,
@@ -10,7 +10,10 @@ const DEFAULT_SLUG = 'default';
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService = new PrismaService()) {}
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: PrismaService,
+  ) {}
 
   async getAll() {
     const [workspace, escalationRules] = await Promise.all([

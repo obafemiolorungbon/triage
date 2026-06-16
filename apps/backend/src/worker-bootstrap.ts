@@ -7,7 +7,7 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log'],
   });
   await app.init();
-  Logger.log('Triage worker consuming queue…');
+  Logger.log('Triage worker consuming queues...');
 }
 
 bootstrap().catch((err) => {

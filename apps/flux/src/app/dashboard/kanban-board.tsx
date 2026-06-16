@@ -55,11 +55,17 @@ function SortableCard({
   ticket: TicketDto;
   onOpenTicket?: (ticketId: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: ticket.id,
-      data: { type: 'ticket', status: ticket.status },
-    });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: ticket.id,
+    data: { type: 'ticket', status: ticket.status },
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -202,11 +208,14 @@ export function KanbanBoard({
       client.patchTicketStatus(id, { status }),
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: listQueryKey });
-      const previous = queryClient.getQueryData<TicketListResponse>(listQueryKey);
+      const previous =
+        queryClient.getQueryData<TicketListResponse>(listQueryKey);
       if (previous) {
         queryClient.setQueryData<TicketListResponse>(listQueryKey, {
           ...previous,
-          items: previous.items.map((t) => (t.id === id ? { ...t, status } : t)),
+          items: previous.items.map((t) =>
+            t.id === id ? { ...t, status } : t,
+          ),
         });
       }
       return { previous };
@@ -216,6 +225,7 @@ export function KanbanBoard({
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: listQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ['ticket-stats'] });
       void queryClient.invalidateQueries({ queryKey: ['ticket'] });
     },
   });

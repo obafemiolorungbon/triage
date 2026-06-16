@@ -1,32 +1,40 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Inject, Logger } from '@nestjs/common';
+import { Job, Queue } from 'bullmq';
 import { AiService } from '../ai/ai.service';
 import { EscalationService } from '../escalation/escalation.service';
 import { ExternalIssuesService } from '../external-issues/external-issues.service';
 import { NotificationService } from '../notification/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { TRIAGE_QUEUE, type TriageJobData } from '../queue/triage.constants';
+import {
+  FEEDBACK_INDEX_QUEUE,
+  TRIAGE_QUEUE,
+  type FeedbackIndexJobData,
+  type TriageJobData,
+} from '../queue/triage.constants';
 import { SettingsService } from '../settings/settings.service';
 
 @Processor(TRIAGE_QUEUE)
 export class TriageProcessor extends WorkerHost {
   private readonly log = new Logger(TriageProcessor.name);
-  private readonly prisma: PrismaService;
-  private readonly ai: AiService;
-  private readonly notifications: NotificationService;
-  private readonly settings: SettingsService;
-  private readonly escalation: EscalationService;
-  private readonly externalIssues: ExternalIssuesService;
 
-  constructor() {
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: PrismaService,
+    @Inject(AiService)
+    private readonly ai: AiService,
+    @Inject(NotificationService)
+    private readonly notifications: NotificationService,
+    @Inject(SettingsService)
+    private readonly settings: SettingsService,
+    @Inject(EscalationService)
+    private readonly escalation: EscalationService,
+    @Inject(ExternalIssuesService)
+    private readonly externalIssues: ExternalIssuesService,
+    @InjectQueue(FEEDBACK_INDEX_QUEUE)
+    private readonly feedbackIndexQueue: Queue<FeedbackIndexJobData>,
+  ) {
     super();
-    this.prisma = new PrismaService();
-    this.ai = new AiService();
-    this.notifications = new NotificationService();
-    this.settings = new SettingsService(this.prisma);
-    this.escalation = new EscalationService(this.prisma);
-    this.externalIssues = new ExternalIssuesService(this.prisma);
   }
 
   async process(job: Job<TriageJobData>): Promise<void> {
@@ -97,7 +105,10 @@ export class TriageProcessor extends WorkerHost {
         escalationTier: evaluated.escalationTier,
       });
 
-      if (workspace.autoCreateCritical && evaluated.escalationTier === 'critical') {
+      if (
+        workspace.autoCreateCritical &&
+        evaluated.escalationTier === 'critical'
+      ) {
         await this.externalIssues.createForFeedback({
           feedbackId,
           provider: workspace.autoCreateProvider,
@@ -118,6 +129,7 @@ export class TriageProcessor extends WorkerHost {
           },
         });
       }
+      await this.enqueueIndex(feedbackId);
     } catch (e) {
       this.log.error(`Triage failed for ${feedbackId}`, e as Error);
       throw e;
@@ -156,12 +168,30 @@ export class TriageProcessor extends WorkerHost {
       category: 'other',
       escalationTier: evaluated.escalationTier,
     });
-    if (workspace.autoCreateCritical && evaluated.escalationTier === 'critical') {
+    if (
+      workspace.autoCreateCritical &&
+      evaluated.escalationTier === 'critical'
+    ) {
       await this.externalIssues.createForFeedback({
         feedbackId,
         provider: workspace.autoCreateProvider,
         creationMode: 'automatic',
       });
     }
+    await this.enqueueIndex(feedbackId);
+  }
+
+  private async enqueueIndex(feedbackId: string) {
+    await this.feedbackIndexQueue.add(
+      'index-feedback',
+      { feedbackId },
+      {
+        jobId: `feedback-index-${feedbackId}`,
+        attempts: 4,
+        backoff: { type: 'exponential', delay: 2_000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
   }
 }

@@ -7,7 +7,10 @@ const ticketSchema = z.object({
   submitterEmail: z.string(),
   rawText: z.string(),
   cleanedText: z.string().nullable(),
-  submissionType: z.enum(['bug', 'idea', 'question', 'praise', 'custom']).nullable().optional(),
+  submissionType: z
+    .enum(['bug', 'idea', 'question', 'praise', 'custom'])
+    .nullable()
+    .optional(),
   category: z.string().nullable(),
   severity: z.enum(['low', 'medium', 'high', 'critical']).nullable().optional(),
   escalationTier: z.enum(['none', 'watch', 'expedite', 'critical']),
@@ -100,6 +103,20 @@ const listResponseSchema = z.object({
 
 export type TicketListResponse = z.infer<typeof listResponseSchema>;
 
+const ticketStatsResponseSchema = z.object({
+  total: z.number(),
+  byStatus: z.object({
+    new: z.number(),
+    triaged: z.number(),
+    claimed: z.number(),
+    in_progress: z.number(),
+    resolved: z.number(),
+    rejected: z.number(),
+  }),
+});
+
+export type TicketStatsResponse = z.infer<typeof ticketStatsResponseSchema>;
+
 const similarResponseSchema = z.object({
   items: z.array(
     z.object({
@@ -137,7 +154,9 @@ const widgetSchema = z.object({
   maxAttachmentBytes: z.number(),
   allowedMimeTypes: z.array(z.string()),
   maxAttachmentsPerSubmit: z.number(),
-  enabledTypes: z.array(z.enum(['bug', 'idea', 'question', 'praise', 'custom'])),
+  enabledTypes: z.array(
+    z.enum(['bug', 'idea', 'question', 'praise', 'custom']),
+  ),
   surveyMode: z.enum(['none', 'csat', 'nps', 'thumbs']),
   pageRules: z.unknown().nullable().optional(),
   audienceRules: z.unknown().nullable().optional(),
@@ -318,6 +337,95 @@ const kbImportResultSchema = z.object({
 export type KbImportProvider = z.infer<typeof kbImportProviderSchema>;
 export type KbImportResult = z.infer<typeof kbImportResultSchema>;
 
+const assistantMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+  createdAt: z.string().optional(),
+});
+
+export type AssistantMessage = z.infer<typeof assistantMessageSchema>;
+
+const assistantSourceSchema = z.object({
+  type: z.enum([
+    'ticket',
+    'comment',
+    'triage_run',
+    'kb_article',
+    'kb_chunk',
+    'deflection',
+    'analytics',
+    'external_issue',
+    'widget',
+    'survey',
+  ]),
+  id: z.string(),
+  citationKey: z.string().optional(),
+  label: z.string(),
+  href: z.string().optional(),
+  excerpt: z.string().optional(),
+  score: z.number().optional(),
+  lexicalScore: z.number().optional(),
+  vectorScore: z.number().optional(),
+});
+
+export type AssistantSource = z.infer<typeof assistantSourceSchema>;
+
+const assistantToolCallSchema = z.object({
+  name: z.string(),
+  status: z.enum(['completed', 'skipped', 'failed']),
+  input: z.unknown().optional(),
+  summary: z.string().optional(),
+  sourceCount: z.number().optional(),
+  durationMs: z.number().optional(),
+  step: z.number().optional(),
+});
+
+export type AssistantToolCall = z.infer<typeof assistantToolCallSchema>;
+
+const assistantQueryResponseSchema = z.object({
+  runId: z.string(),
+  answer: z.string(),
+  messages: z.array(assistantMessageSchema),
+  sources: z.array(assistantSourceSchema),
+  toolCalls: z.array(assistantToolCallSchema),
+  steps: z.array(
+    z.object({
+      step: z.number(),
+      finishReason: z.string(),
+      toolCalls: z.array(assistantToolCallSchema),
+      sourceIds: z.array(z.string()),
+      durationMs: z.number(),
+      inputTokens: z.number().optional(),
+      outputTokens: z.number().optional(),
+    }),
+  ),
+  stopReason: z.enum([
+    'answered',
+    'no_evidence',
+    'step_limit',
+    'tool_call_limit',
+    'duplicate_tool_call',
+    'timeout',
+    'tool_failure',
+    'model_failure',
+    'read_only_refusal',
+    'not_configured',
+  ]),
+  durationMs: z.number(),
+  usage: z
+    .object({
+      inputTokens: z.number().optional(),
+      outputTokens: z.number().optional(),
+      totalTokens: z.number().optional(),
+    })
+    .optional(),
+  suggestedQuestions: z.array(z.string()),
+});
+
+export type AssistantQueryResponse = z.infer<
+  typeof assistantQueryResponseSchema
+>;
+
 export type ApiClientOptions = {
   baseUrl: string;
   fetchFn?: typeof fetch;
@@ -366,15 +474,24 @@ export function createApiClient(opts: ApiClientOptions) {
       metadata?: Record<string, unknown>;
       source?: { url?: string; title?: string };
     }) {
-      return request<{ id: string; shortId: string; status: string }>(ticketsBase, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
+      return request<{ id: string; shortId: string; status: string }>(
+        ticketsBase,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      );
     },
     listTickets(search: string) {
       return request<TicketListResponse>(`${ticketsBase}${search}`, {
         method: 'GET',
         schema: listResponseSchema,
+      });
+    },
+    getTicketStats(search: string) {
+      return request<TicketStatsResponse>(`${ticketsBase}/stats${search}`, {
+        method: 'GET',
+        schema: ticketStatsResponseSchema,
       });
     },
     getTicket(id: string) {
@@ -436,13 +553,12 @@ export function createApiClient(opts: ApiClientOptions) {
       });
     },
     createExternalIssue(id: string, provider: ExternalIssueProvider) {
-      return request<{ link: NonNullable<TicketDto['externalIssueLinks']>[number] }>(
-        `${ticketsBase}/${id}/external-issues`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ provider }),
-        },
-      );
+      return request<{
+        link: NonNullable<TicketDto['externalIssueLinks']>[number];
+      }>(`${ticketsBase}/${id}/external-issues`, {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      });
     },
     listWidgets() {
       return request<WidgetDto[]>('/api/v1/widgets', {
@@ -541,6 +657,17 @@ export function createApiClient(opts: ApiClientOptions) {
       return request<KbArticleDto>(`/api/v1/kb/articles/${id}`, {
         method: 'DELETE',
         schema: kbArticleSchema,
+      });
+    },
+    askAssistant(body: {
+      message: string;
+      history?: AssistantMessage[];
+      maxToolCalls?: number;
+    }) {
+      return request<AssistantQueryResponse>('/api/v1/assistant/query', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        schema: assistantQueryResponseSchema,
       });
     },
   };

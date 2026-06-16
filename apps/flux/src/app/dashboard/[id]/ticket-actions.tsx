@@ -8,17 +8,21 @@ import { browserTicketsClient } from '../../../lib/tickets-browser-client';
 export function TicketActions({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [comment, setComment] = useState('');
-  const [dialog, setDialog] = useState<null | 'claim' | 'resolve' | 'reject'>(null);
+  const [dialog, setDialog] = useState<null | 'claim' | 'resolve' | 'reject'>(
+    null,
+  );
   const client = browserTicketsClient();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['ticket', id] });
     queryClient.invalidateQueries({ queryKey: ['ticket', id, 'comments'] });
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: ['ticket-stats'] });
   };
 
   const patchMutation = useMutation({
-    mutationFn: (status: TicketStatus) => client.patchTicketStatus(id, { status }),
+    mutationFn: (status: TicketStatus) =>
+      client.patchTicketStatus(id, { status }),
     onSuccess: invalidate,
   });
 
@@ -45,8 +49,20 @@ export function TicketActions({ id }: { id: string }) {
           disabled={patchMutation.isPending}
           onClick={() => setDialog('claim')}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-            <path d="M2 6l3 3L10 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            aria-hidden
+          >
+            <path
+              d="M2 6l3 3L10 3"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           Claim
         </button>
@@ -244,7 +260,9 @@ function ActionDialog({
           </button>
           <button
             type="button"
-            className={kind === 'claim' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+            className={
+              kind === 'claim' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'
+            }
             onClick={onConfirm}
             disabled={busy}
           >

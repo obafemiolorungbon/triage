@@ -20,6 +20,7 @@ export function LiveSync() {
       socket.emit('joinStaff');
       socket.on('feedback', () => {
         void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        void queryClient.invalidateQueries({ queryKey: ['ticket-stats'] });
         void queryClient.invalidateQueries({ queryKey: ['ticket'] });
       });
     } catch {

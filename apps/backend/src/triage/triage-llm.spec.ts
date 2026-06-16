@@ -21,13 +21,11 @@ describe('triage schemas', () => {
     const v = triageResultSchema.parse({
       cleanedText: 'Hello',
       category: 'bug',
-      priority: 'high',
       sentiment: 'negative',
       knowledgeGap: true,
       suggestedTags: ['checkout'],
     });
     expect(v.category).toBe('bug');
-    expect(v.priority).toBe('high');
   });
 
   it('rejects categories outside the enum', () => {
@@ -35,7 +33,6 @@ describe('triage schemas', () => {
       triageResultSchema.parse({
         cleanedText: 'x',
         category: 'not-a-real-category',
-        priority: 'low',
         sentiment: 'neutral',
         knowledgeGap: false,
         suggestedTags: [],

@@ -7,7 +7,7 @@ type Tab = {
   label: string;
   href: string;
   description: string;
-  icon: 'queue' | 'mine' | 'widgets' | 'kb' | 'settings';
+  icon: 'queue' | 'mine' | 'ask' | 'widgets' | 'kb' | 'settings';
   match: (p: string, sp: URLSearchParams) => boolean;
 };
 
@@ -26,6 +26,13 @@ const TABS: Tab[] = [
     description: 'Claimed work',
     icon: 'mine',
     match: (p, sp) => p.startsWith('/dashboard/mine') || sp.get('assignedMe') === 'true',
+  },
+  {
+    label: 'Ask',
+    href: '/dashboard/ask',
+    description: 'Question the data',
+    icon: 'ask',
+    match: (p) => p.startsWith('/dashboard/ask'),
   },
   {
     label: 'Widgets',
@@ -136,6 +143,14 @@ function NavIcon({ name }: { name: Tab['icon'] }) {
     return (
       <svg {...common}>
         <path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4.5 20a7.5 7.5 0 0115 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (name === 'ask') {
+    return (
+      <svg {...common}>
+        <path d="M5 6.5h14M5 12h8M5 17.5h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        <path d="M16 14l1.1 2.35L19.5 17.5l-2.4 1.15L16 21l-1.1-2.35-2.4-1.15 2.4-1.15L16 14z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
     );
   }

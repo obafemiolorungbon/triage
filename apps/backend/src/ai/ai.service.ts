@@ -1,13 +1,24 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { Injectable } from '@nestjs/common';
-import { generateObject, generateText } from 'ai';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  generateObject,
+  generateText,
+  jsonSchema,
+  type CoreMessage,
+  type GenerateTextOnStepFinishCallback,
+  type ToolCallRepairFunction,
+  type ToolSet,
+} from 'ai';
 import {
   noiseFilterResultSchema,
   triageResultSchema,
   type NoiseFilterResult,
   type TriageResult,
 } from '@triage/shared-types';
+import type { Env } from '../config/env.schema';
 import { spamPrompt, triagePrompt } from './prompts';
+import { recoverToolArguments } from './tool-call-repair';
 
 export type TriageOptions = {
   industryContext?: string;
@@ -39,24 +50,40 @@ async function withRetries<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
  */
 @Injectable()
 export class AiService {
+  constructor(
+    @Inject(ConfigService)
+    private readonly config: ConfigService<Env, true>,
+  ) {}
+
   isEnabled(): boolean {
-    return Boolean(process.env.OPENROUTER_API_KEY);
+    return Boolean(this.config.get('OPENROUTER_API_KEY', { infer: true }));
   }
 
   getMainModelName(): string {
-    return process.env.OPENROUTER_MODEL_MAIN || 'openai/gpt-4o';
+    return (
+      this.config.get('OPENROUTER_MODEL_MAIN', { infer: true }) ||
+      'openai/gpt-4o'
+    );
   }
 
   getFilterModelName(): string {
-    return process.env.OPENROUTER_MODEL_FILTER || 'openai/gpt-4o-mini';
+    return (
+      this.config.get('OPENROUTER_MODEL_FILTER', { infer: true }) ||
+      'openai/gpt-4o-mini'
+    );
   }
 
   getEmbeddingModelName(): string {
-    return process.env.OPENROUTER_MODEL_EMBEDDING || 'openai/text-embedding-3-small';
+    return (
+      this.config.get('OPENROUTER_MODEL_EMBEDDING', { infer: true }) ||
+      'openai/text-embedding-3-small'
+    );
   }
 
   getIndustryContext(): string {
-    return process.env.OPENROUTER_INDUSTRY_CONTEXT ?? '';
+    return (
+      this.config.get('OPENROUTER_INDUSTRY_CONTEXT', { infer: true }) ?? ''
+    );
   }
 
   async classifySpam(text: string): Promise<NoiseFilterResult> {
@@ -92,7 +119,9 @@ export class AiService {
       fetch('https://openrouter.ai/api/v1/embeddings', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${this.config.get('OPENROUTER_API_KEY', {
+            infer: true,
+          })}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -140,8 +169,97 @@ export class AiService {
     return text;
   }
 
+  async generateTextResponse(
+    prompt: string,
+    opts: { model?: 'main' | 'filter' } = {},
+  ) {
+    if (!this.isEnabled()) {
+      throw new Error(
+        'OPENROUTER_API_KEY is not configured; guard callers with AiService.isEnabled()',
+      );
+    }
+    const modelName =
+      opts.model === 'filter'
+        ? this.getFilterModelName()
+        : this.getMainModelName();
+    const { text } = await withRetries(() =>
+      generateText({
+        model: this.openrouter()(modelName),
+        prompt,
+      }),
+    );
+    return text;
+  }
+
+  async generateAgentResponse<TOOLS extends ToolSet>(opts: {
+    system: string;
+    messages: CoreMessage[];
+    tools: TOOLS;
+    maxSteps: number;
+    abortSignal?: AbortSignal;
+    onStepFinish?: GenerateTextOnStepFinishCallback<TOOLS>;
+  }) {
+    if (!this.isEnabled()) {
+      throw new Error(
+        'OPENROUTER_API_KEY is not configured; guard callers with AiService.isEnabled()',
+      );
+    }
+    const repairToolCall = this.createToolCallRepair<TOOLS>(opts.abortSignal);
+    return withRetries(() =>
+      generateText({
+        model: this.openrouter()(this.getMainModelName()),
+        system: opts.system,
+        messages: opts.messages,
+        tools: opts.tools,
+        maxSteps: opts.maxSteps,
+        abortSignal: opts.abortSignal,
+        onStepFinish: opts.onStepFinish,
+        experimental_repairToolCall: repairToolCall,
+      }),
+    );
+  }
+
+  private createToolCallRepair<TOOLS extends ToolSet>(
+    abortSignal?: AbortSignal,
+  ): ToolCallRepairFunction<TOOLS> {
+    let repairsRemaining = 1;
+    return async ({ toolCall, tools, parameterSchema, error }) => {
+      if (repairsRemaining <= 0 || abortSignal?.aborted) return null;
+      repairsRemaining -= 1;
+      const selectedTool = tools[toolCall.toolName];
+      if (!selectedTool) return null;
+
+      const recovered = recoverToolArguments(
+        toolCall.args,
+        selectedTool.parameters,
+      );
+      if (recovered !== null) {
+        return { ...toolCall, args: JSON.stringify(recovered) };
+      }
+
+      const schema = parameterSchema({ toolName: toolCall.toolName });
+      const { object } = await generateObject({
+        model: this.openrouter()(this.getFilterModelName()),
+        schema: jsonSchema(schema),
+        abortSignal,
+        prompt: [
+          'Repair arguments for one declared tool call.',
+          'Return only an object that conforms exactly to the supplied schema.',
+          'Remove undeclared fields, duplicated fields, and malformed fragments.',
+          'Preserve the clear user intent. Do not invent filters.',
+          '',
+          `Tool: ${toolCall.toolName}`,
+          `Schema: ${JSON.stringify(schema)}`,
+          `Invalid arguments: ${toolCall.args}`,
+          `Validation error: ${error.message}`,
+        ].join('\n'),
+      });
+      return { ...toolCall, args: JSON.stringify(object) };
+    };
+  }
+
   private openrouter() {
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = this.config.get('OPENROUTER_API_KEY', { infer: true });
     if (!apiKey) {
       throw new Error(
         'OPENROUTER_API_KEY is not configured; guard callers with AiService.isEnabled()',

@@ -192,8 +192,14 @@ export const widgetVariantSchema = z.object({
 });
 export type WidgetVariantInput = z.infer<typeof widgetVariantSchema>;
 
-export const widgetSuccessAnimationSchema = z.enum(['none', 'check', 'thumbs-up']);
-export type WidgetSuccessAnimation = z.infer<typeof widgetSuccessAnimationSchema>;
+export const widgetSuccessAnimationSchema = z.enum([
+  'none',
+  'check',
+  'thumbs-up',
+]);
+export type WidgetSuccessAnimation = z.infer<
+  typeof widgetSuccessAnimationSchema
+>;
 
 export const widgetThemeSchema = z.object({
   logoUrl: z.string().url().optional().nullable(),
@@ -310,7 +316,11 @@ export const widgetConfigSchema = z.object({
   configRateLimitPerMinute: z.number().int().min(1).max(5_000).default(120),
   requireConsent: z.boolean().default(false),
   privacyPolicyUrl: z.string().url().optional().nullable(),
-  consentText: z.string().min(1).max(500).default('I agree to be contacted about this feedback.'),
+  consentText: z
+    .string()
+    .min(1)
+    .max(500)
+    .default('I agree to be contacted about this feedback.'),
   brandColor: z.string().min(3).max(40),
   accentColor: z.string().min(3).max(40),
   position: z.string().min(1).max(80),
@@ -321,16 +331,19 @@ export const widgetConfigSchema = z.object({
   enabledUserFields: z.array(z.string().min(1)).default([]),
   requiredUserFields: z.array(z.string().min(1)).default([]),
   enabledMetadataKeys: z.array(z.string().min(1)).default([]),
-  maxAttachmentBytes: z.number().int().positive().max(50_000_000).default(10_485_760),
+  maxAttachmentBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(50_000_000)
+    .default(10_485_760),
   allowedMimeTypes: z
     .array(z.string().min(1).max(200))
     .default(['image/png', 'image/jpeg', 'image/webp']),
   maxAttachmentsPerSubmit: z.number().int().min(0).max(10).default(3),
-  enabledTypes: z.array(widgetSubmissionTypeSchema).default([
-    'bug',
-    'idea',
-    'question',
-  ]),
+  enabledTypes: z
+    .array(widgetSubmissionTypeSchema)
+    .default(['bug', 'idea', 'question']),
   surveyMode: surveyModeSchema.default('none'),
   fields: z.array(widgetFieldSchema).default([]),
   variants: z.array(widgetVariantSchema).default([]),
@@ -433,3 +446,102 @@ export const deflectionEventBodySchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 export type DeflectionEventBody = z.infer<typeof deflectionEventBodySchema>;
+
+export const assistantMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().min(1).max(20_000),
+  createdAt: z.string().optional(),
+});
+export type AssistantMessage = z.infer<typeof assistantMessageSchema>;
+
+export const assistantSourceSchema = z.object({
+  type: z.enum([
+    'ticket',
+    'comment',
+    'triage_run',
+    'kb_article',
+    'kb_chunk',
+    'deflection',
+    'analytics',
+    'external_issue',
+    'widget',
+    'survey',
+  ]),
+  id: z.string(),
+  citationKey: z
+    .string()
+    .regex(/^S\d+$/)
+    .optional(),
+  label: z.string(),
+  href: z.string().optional(),
+  excerpt: z.string().optional(),
+  score: z.number().optional(),
+  lexicalScore: z.number().optional(),
+  vectorScore: z.number().optional(),
+});
+export type AssistantSource = z.infer<typeof assistantSourceSchema>;
+
+export const assistantToolCallSchema = z.object({
+  name: z.string(),
+  status: z.enum(['completed', 'skipped', 'failed']),
+  input: z.unknown().optional(),
+  summary: z.string().optional(),
+  sourceCount: z.number().int().min(0).optional(),
+  durationMs: z.number().int().min(0).optional(),
+  step: z.number().int().min(1).optional(),
+});
+export type AssistantToolCall = z.infer<typeof assistantToolCallSchema>;
+
+export const assistantStopReasonSchema = z.enum([
+  'answered',
+  'no_evidence',
+  'step_limit',
+  'tool_call_limit',
+  'duplicate_tool_call',
+  'timeout',
+  'tool_failure',
+  'model_failure',
+  'read_only_refusal',
+  'not_configured',
+]);
+export type AssistantStopReason = z.infer<typeof assistantStopReasonSchema>;
+
+export const assistantStepTraceSchema = z.object({
+  step: z.number().int().min(1),
+  finishReason: z.string(),
+  toolCalls: z.array(assistantToolCallSchema),
+  sourceIds: z.array(z.string()),
+  durationMs: z.number().int().min(0),
+  inputTokens: z.number().int().min(0).optional(),
+  outputTokens: z.number().int().min(0).optional(),
+});
+export type AssistantStepTrace = z.infer<typeof assistantStepTraceSchema>;
+
+export const assistantQueryBodySchema = z.object({
+  message: z.string().trim().min(1).max(4_000),
+  history: z.array(assistantMessageSchema).max(20).optional(),
+  maxToolCalls: z.number().int().min(1).max(6).default(6),
+});
+export type AssistantQueryBody = z.infer<typeof assistantQueryBodySchema>;
+
+export const assistantQueryResponseSchema = z.object({
+  runId: z.string(),
+  answer: z.string(),
+  messages: z.array(assistantMessageSchema),
+  sources: z.array(assistantSourceSchema),
+  toolCalls: z.array(assistantToolCallSchema),
+  steps: z.array(assistantStepTraceSchema),
+  stopReason: assistantStopReasonSchema,
+  durationMs: z.number().int().min(0),
+  usage: z
+    .object({
+      inputTokens: z.number().int().min(0).optional(),
+      outputTokens: z.number().int().min(0).optional(),
+      totalTokens: z.number().int().min(0).optional(),
+    })
+    .optional(),
+  suggestedQuestions: z.array(z.string()),
+});
+export type AssistantQueryResponse = z.infer<
+  typeof assistantQueryResponseSchema
+>;

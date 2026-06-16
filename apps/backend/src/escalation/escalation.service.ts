@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { EscalationTier } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -11,7 +11,10 @@ const TIER_WEIGHT: Record<EscalationTier, number> = {
 
 @Injectable()
 export class EscalationService {
-  constructor(private readonly prisma: PrismaService = new PrismaService()) {}
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: PrismaService,
+  ) {}
 
   async evaluate(input: {
     metadata?: Record<string, unknown> | null;

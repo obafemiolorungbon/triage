@@ -209,11 +209,30 @@ model Feedback {
   externalIssueLinks ExternalIssueLink[]
   attachments        Attachment[]
   surveys            Survey[]
+  searchDocument     FeedbackSearchDocument?
 
   @@index([status, escalationTier, createdAt])
   @@index([assignedAgentId])
   @@index([widgetId])
   @@map("feedback")
+}
+
+model FeedbackSearchDocument {
+  feedbackId    String   @id
+  feedback      Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  searchText    String   @db.Text
+  searchVector  Unsupported("tsvector")?
+  embedding     Unsupported("vector(1536)")?
+  contentHash   String
+  embeddingModel String?
+  indexedAt     DateTime @default(now())
+  embeddedAt    DateTime?
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceId, indexedAt])
+  @@map("feedback_search_document")
 }
 
 /**
@@ -325,6 +344,7 @@ model Workspace {
   kbArticles KbArticle[]
   kbChunks   KbChunk[]
   deflections Deflection[]
+  feedbackSearchDocuments FeedbackSearchDocument[]
 
   @@map("workspace")
 }
@@ -429,6 +449,7 @@ model KbChunk {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   heading     String?
   body        String   @db.Text
+  searchVector Unsupported("tsvector")?
   embedding   Unsupported("vector(1536)")?
   order       Int      @default(0)
   createdAt   DateTime @default(now())

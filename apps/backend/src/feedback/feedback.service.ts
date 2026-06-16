@@ -21,6 +21,7 @@ import {
   type WidgetSurveySubmission,
   type WidgetSubmissionType,
   type FeedbackSeverity,
+  type FeedbackListQuery,
 } from '@triage/shared-types';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +30,15 @@ import type { AuthedRequest } from '../guards/session.guard';
 import { EscalationService } from '../escalation/escalation.service';
 import { ExternalIssuesService } from '../external-issues/external-issues.service';
 import { StorageService } from '../storage/storage.service';
+
+const FEEDBACK_STATUSES: FeedbackStatus[] = [
+  'new',
+  'triaged',
+  'claimed',
+  'in_progress',
+  'resolved',
+  'rejected',
+];
 
 /** Agent-allowed status transitions when not using dedicated claim/resolve paths. */
 const AGENT_TRANSITIONS: Record<FeedbackStatus, FeedbackStatus[]> = {
@@ -44,7 +54,8 @@ const AGENT_TRANSITIONS: Record<FeedbackStatus, FeedbackStatus[]> = {
 export class FeedbackService {
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(INTAKE_QUEUE) private readonly intakeQueue: Queue<IntakeJobData>,
+    @InjectQueue(INTAKE_QUEUE)
+    private readonly intakeQueue: Queue<IntakeJobData>,
     private readonly events: EventsGateway,
     private readonly escalation: EscalationService,
     private readonly externalIssues: ExternalIssuesService,
@@ -74,7 +85,8 @@ export class FeedbackService {
         severity: parsed.data.severity,
         rawText,
         shortId: await this.nextShortId(),
-        userContext: (parsed.data.userContext ?? undefined) as Prisma.InputJsonValue,
+        userContext: (parsed.data.userContext ??
+          undefined) as Prisma.InputJsonValue,
         metadata: (parsed.data.metadata ?? undefined) as Prisma.InputJsonValue,
         consent: (parsed.data.consent ?? undefined) as Prisma.InputJsonValue,
         sourceUrl: parsed.data.source?.url,
@@ -111,7 +123,11 @@ export class FeedbackService {
       consent,
       source: parsed.data.source,
     }).then(async (ticket) => {
-      await this.createAttachments(ticket.id, widgetId, parsed.data.attachments);
+      await this.createAttachments(
+        ticket.id,
+        widgetId,
+        parsed.data.attachments,
+      );
       if (parsed.data.survey) {
         await this.createSurvey(ticket.id, widgetId, parsed.data.survey);
       }
@@ -119,41 +135,13 @@ export class FeedbackService {
     });
   }
 
-  async list(query: Record<string, string | string[] | undefined>, userId: string) {
-    const q = feedbackListQuerySchema.safeParse({
-      ...Object.fromEntries(
-        Object.entries(query).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]),
-      ),
-      assignedMe: query.assignedMe,
-    });
-    if (!q.success) {
-      throw new BadRequestException(q.error.flatten());
-    }
-    const {
-      page,
-      pageSize,
-      status,
-      escalationTier,
-      category,
-      q: search,
-      assignedMe,
-      noiseOnly,
-      knowledgeOnly,
-    } = q.data;
-    const where: Prisma.FeedbackWhereInput = {};
-    if (status) where.status = status;
-    if (escalationTier) where.escalationTier = escalationTier;
-    if (category) where.category = category;
-    if (noiseOnly) where.isNoise = true;
-    if (knowledgeOnly) where.knowledgeGap = true;
-    if (assignedMe) where.assignedAgentId = userId;
-    if (search) {
-      where.OR = [
-        { rawText: { contains: search, mode: 'insensitive' } },
-        { cleanedText: { contains: search, mode: 'insensitive' } },
-        { category: { contains: search, mode: 'insensitive' } },
-      ];
-    }
+  async list(
+    query: Record<string, string | string[] | undefined>,
+    userId: string,
+  ) {
+    const q = this.parseListQuery(query);
+    const { page, pageSize } = q;
+    const where = this.buildListWhere(q, userId);
     const [items, total] = await Promise.all([
       this.prisma.client.feedback.findMany({
         where,
@@ -164,6 +152,29 @@ export class FeedbackService {
       this.prisma.client.feedback.count({ where }),
     ]);
     return { items, total, page, pageSize };
+  }
+
+  async stats(
+    query: Record<string, string | string[] | undefined>,
+    userId: string,
+  ) {
+    const q = this.parseListQuery(query);
+    const where = this.buildListWhere(q, userId);
+    const [total, grouped] = await Promise.all([
+      this.prisma.client.feedback.count({ where }),
+      this.prisma.client.feedback.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+    ]);
+    const byStatus = Object.fromEntries(
+      FEEDBACK_STATUSES.map((status) => [status, 0]),
+    ) as Record<FeedbackStatus, number>;
+    for (const row of grouped) {
+      byStatus[row.status] = row._count._all;
+    }
+    return { total, byStatus };
   }
 
   async getById(id: string) {
@@ -230,7 +241,9 @@ export class FeedbackService {
 
     if (!isAdmin) {
       if (fb.status === 'resolved' || fb.status === 'rejected') {
-        throw new BadRequestException('Cannot change status of a closed ticket');
+        throw new BadRequestException(
+          'Cannot change status of a closed ticket',
+        );
       }
       const allowed = AGENT_TRANSITIONS[fb.status as FeedbackStatus];
       if (!allowed.includes(next)) {
@@ -439,7 +452,9 @@ export class FeedbackService {
     let severity: FeedbackSeverity | undefined;
 
     if (widget && !widget.enabledTypes.includes(submissionType)) {
-      throw new BadRequestException('Submission type is not enabled for this widget');
+      throw new BadRequestException(
+        'Submission type is not enabled for this widget',
+      );
     }
 
     for (const field of widget?.fields ?? []) {
@@ -499,5 +514,46 @@ export class FeedbackService {
       if (!existing) return value;
     }
     throw new BadRequestException('Could not allocate ticket reference');
+  }
+
+  private parseListQuery(
+    query: Record<string, string | string[] | undefined>,
+  ): FeedbackListQuery {
+    const parsed = feedbackListQuerySchema.safeParse({
+      ...Object.fromEntries(
+        Object.entries(query).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]),
+      ),
+    });
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return parsed.data;
+  }
+
+  private buildListWhere(query: FeedbackListQuery, userId: string) {
+    const {
+      status,
+      escalationTier,
+      category,
+      q: search,
+      assignedMe,
+      noiseOnly,
+      knowledgeOnly,
+    } = query;
+    const where: Prisma.FeedbackWhereInput = {};
+    if (status) where.status = status;
+    if (escalationTier) where.escalationTier = escalationTier;
+    if (category) where.category = category;
+    if (noiseOnly) where.isNoise = true;
+    if (knowledgeOnly) where.knowledgeGap = true;
+    if (assignedMe) where.assignedAgentId = userId;
+    if (search) {
+      where.OR = [
+        { rawText: { contains: search, mode: 'insensitive' } },
+        { cleanedText: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    return where;
   }
 }

@@ -165,6 +165,33 @@ describe('FeedbackService', () => {
         service.list({ status: 'nope' }, 'u1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    it('returns status stats for the full filtered result set', async () => {
+      prisma.client.feedback.count = jest.fn().mockResolvedValue(3);
+      prisma.client.feedback.groupBy = jest.fn().mockResolvedValue([
+        { status: 'new', _count: { _all: 2 } },
+        { status: 'resolved', _count: { _all: 1 } },
+      ]);
+
+      const out = await service.stats({ knowledgeOnly: 'true' }, 'u1');
+
+      expect(out).toEqual({
+        total: 3,
+        byStatus: {
+          new: 2,
+          triaged: 0,
+          claimed: 0,
+          in_progress: 0,
+          resolved: 1,
+          rejected: 0,
+        },
+      });
+      expect(prisma.client.feedback.groupBy).toHaveBeenCalledWith({
+        by: ['status'],
+        where: { knowledgeGap: true },
+        _count: { _all: true },
+      });
+    });
   });
 
   describe('getById', () => {
@@ -221,22 +248,16 @@ describe('FeedbackService', () => {
 
     it('throws ForbiddenException without user id', async () => {
       await expect(
-        service.updateStatus(
-          'id',
-          { status: 'triaged' },
-          { session: undefined } as never,
-        ),
+        service.updateStatus('id', { status: 'triaged' }, {
+          session: undefined,
+        } as never),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('returns unchanged when status already matches', async () => {
       const row = fb({ status: 'new' });
       prisma.client.feedback.findUnique = jest.fn().mockResolvedValue(row);
-      const out = await service.updateStatus(
-        'id',
-        { status: 'new' },
-        authed(),
-      );
+      const out = await service.updateStatus('id', { status: 'new' }, authed());
       expect(out).toBe(row);
       expect(prisma.client.feedback.update).not.toHaveBeenCalled();
     });
@@ -371,7 +392,9 @@ describe('FeedbackService', () => {
         .mockResolvedValue(fb({ status: 'new', assignedAgentId: null }));
       prisma.client.feedback.update = jest
         .fn()
-        .mockResolvedValue(fb({ status: 'in_progress', assignedAgentId: 'u1' }));
+        .mockResolvedValue(
+          fb({ status: 'in_progress', assignedAgentId: 'u1' }),
+        );
       prisma.client.auditLog.create = jest.fn().mockResolvedValue({});
       await service.updateStatus('id', { status: 'in_progress' }, authed());
       expect(prisma.client.feedback.update).toHaveBeenCalledWith({
@@ -384,9 +407,11 @@ describe('FeedbackService', () => {
     });
 
     it('in_progress -> triaged disconnects assignee', async () => {
-      prisma.client.feedback.findUnique = jest.fn().mockResolvedValue(
-        fb({ status: 'in_progress', assignedAgentId: 'u1' }),
-      );
+      prisma.client.feedback.findUnique = jest
+        .fn()
+        .mockResolvedValue(
+          fb({ status: 'in_progress', assignedAgentId: 'u1' }),
+        );
       prisma.client.feedback.update = jest
         .fn()
         .mockResolvedValue(fb({ status: 'triaged', assignedAgentId: null }));
@@ -420,9 +445,9 @@ describe('FeedbackService', () => {
     });
 
     it('admin reopen from resolved clears resolvedAt on next status', async () => {
-      prisma.client.feedback.findUnique = jest.fn().mockResolvedValue(
-        fb({ status: 'resolved', resolvedAt: new Date() }),
-      );
+      prisma.client.feedback.findUnique = jest
+        .fn()
+        .mockResolvedValue(fb({ status: 'resolved', resolvedAt: new Date() }));
       prisma.client.feedback.update = jest
         .fn()
         .mockResolvedValue(fb({ status: 'new' }));
@@ -461,11 +486,7 @@ describe('FeedbackService', () => {
         id: 'c1',
         createdAt: new Date('2020-01-01'),
       });
-      const out = await service.addComment(
-        'fid',
-        { body: 'note' },
-        authed(),
-      );
+      const out = await service.addComment('fid', { body: 'note' }, authed());
       expect(out.id).toBe('c1');
     });
   });

@@ -9,8 +9,10 @@ export function createPrismaMock(): {
     feedback: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
+      groupBy: jest.fn(),
       update: jest.fn(),
     },
     feedbackTriageRun: {
@@ -18,6 +20,16 @@ export function createPrismaMock(): {
     },
     comment: {
       create: jest.fn(),
+      findMany: jest.fn(),
+    },
+    deflection: {
+      findMany: jest.fn(),
+    },
+    kbChunk: {
+      findMany: jest.fn(),
+    },
+    workspace: {
+      findUnique: jest.fn(),
     },
     auditLog: {
       create: jest.fn(),
@@ -30,6 +42,8 @@ export function createPrismaMock(): {
     },
     $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     $queryRaw: jest.fn().mockResolvedValue([{ ok: 1 }]),
+    $queryRawUnsafe: jest.fn(),
+    $executeRawUnsafe: jest.fn(),
   };
 
   return {

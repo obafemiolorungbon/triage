@@ -9,10 +9,15 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import { browserTicketsClient } from '../../lib/tickets-browser-client';
 import { EmptyState as DashboardEmptyState } from '../../components/ui/empty-state';
-import { EscalationPill, StatusDot, StatusPill } from '../../components/ui/status';
+import {
+  EscalationPill,
+  StatusDot,
+  StatusPill,
+} from '../../components/ui/status';
 import { KanbanBoard } from './kanban-board';
 import { TicketPreviewDrawer } from './ticket-preview-drawer';
 
@@ -25,7 +30,20 @@ const STATUSES: TicketStatus[] = [
   'rejected',
 ];
 
-const ESCALATION_TIERS: EscalationTier[] = ['critical', 'expedite', 'watch', 'none'];
+const ESCALATION_TIERS: EscalationTier[] = [
+  'critical',
+  'expedite',
+  'watch',
+  'none',
+];
+const TABLE_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const FILTER_PARAM_KEYS = [
+  'q',
+  'status',
+  'escalationTier',
+  'noiseOnly',
+  'knowledgeOnly',
+] as const;
 
 function useListQueryString() {
   const sp = useSearchParams();
@@ -39,6 +57,18 @@ function useListQueryString() {
     }
     const s = u.toString();
     return s ? `?${s}` : '?pageSize=20';
+  }, [sp]);
+}
+
+function useStatsQueryString() {
+  const sp = useSearchParams();
+  return useMemo(() => {
+    const u = new URLSearchParams(sp.toString());
+    u.delete('page');
+    u.delete('pageSize');
+    u.delete('view');
+    const s = u.toString();
+    return s ? `?${s}` : '';
   }, [sp]);
 }
 
@@ -56,7 +86,8 @@ function StatusCell({
       client.patchTicketStatus(ticket.id, { status }),
     onMutate: async (status) => {
       await queryClient.cancelQueries({ queryKey: listQueryKey });
-      const previous = queryClient.getQueryData<TicketListResponse>(listQueryKey);
+      const previous =
+        queryClient.getQueryData<TicketListResponse>(listQueryKey);
       if (previous) {
         queryClient.setQueryData<TicketListResponse>(listQueryKey, {
           ...previous,
@@ -72,6 +103,7 @@ function StatusCell({
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: listQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ['ticket-stats'] });
       void queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
     },
   });
@@ -104,32 +136,43 @@ export function DashboardQueue() {
   const sp = useSearchParams();
   const [previewTicketId, setPreviewTicketId] = useState<string | null>(null);
   const listQs = useListQueryString();
+  const statsQs = useStatsQueryString();
   const listQueryKey = ['tickets', listQs] as const;
+  const statsQueryKey = ['ticket-stats', statsQs] as const;
   const view = sp.get('view') === 'kanban' ? 'kanban' : 'table';
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: listQueryKey,
     queryFn: () => browserTicketsClient().listTickets(listQs),
   });
+  const { data: statsData } = useQuery({
+    queryKey: statsQueryKey,
+    queryFn: () => browserTicketsClient().getTicketStats(statsQs),
+  });
 
-  function buildHref(patch: Record<string, string | null | undefined>) {
+  function buildHref(
+    patch: Record<string, string | number | null | undefined>,
+  ) {
     const u = new URLSearchParams(sp.toString());
     for (const [k, v] of Object.entries(patch)) {
       if (v === null || v === undefined || v === '') u.delete(k);
-      else u.set(k, v);
+      else u.set(k, String(v));
     }
     const s = u.toString();
     return s ? `/dashboard?${s}` : '/dashboard';
   }
 
-  function onFilterSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function onFilterSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const u = new URLSearchParams();
+    const u = new URLSearchParams(sp.toString());
+    FILTER_PARAM_KEYS.forEach((key) => u.delete(key));
+    u.delete('page');
     for (const [k, v] of fd.entries()) {
       if (typeof v === 'string' && v) u.set(k, v);
     }
     if (view === 'kanban') u.set('view', 'kanban');
+    else u.delete('view');
     const s = u.toString();
     router.push(s ? `/dashboard?${s}` : '/dashboard');
   }
@@ -139,15 +182,24 @@ export function DashboardQueue() {
   const escalationTier = sp.get('escalationTier') ?? '';
   const noiseOnly = sp.get('noiseOnly') === 'true';
   const knowledgeOnly = sp.get('knowledgeOnly') === 'true';
-  const hasFilters = Boolean(q || status || escalationTier || noiseOnly || knowledgeOnly);
+  const hasFilters = Boolean(
+    q || status || escalationTier || noiseOnly || knowledgeOnly,
+  );
+  const resetFiltersHref = buildHref({
+    q: null,
+    status: null,
+    escalationTier: null,
+    noiseOnly: null,
+    knowledgeOnly: null,
+    page: null,
+  });
 
-  const countsByStatus = useMemo(() => {
-    const c: Partial<Record<TicketStatus, number>> = {};
-    data?.items.forEach((t) => {
-      c[t.status] = (c[t.status] ?? 0) + 1;
-    });
-    return c;
-  }, [data]);
+  const totalPages = data
+    ? Math.max(1, Math.ceil(data.total / data.pageSize))
+    : 1;
+  const canShowTablePagination = Boolean(
+    data && view === 'table' && data.total > 0,
+  );
 
   return (
     <div className="space-y-7">
@@ -167,7 +219,7 @@ export function DashboardQueue() {
 
         <div className="surface inline-flex w-fit items-center rounded-full p-1 text-xs font-medium">
           <Link
-            href={buildHref({ view: null })}
+            href={buildHref({ view: null, page: null })}
             className={`inline-flex h-8 cursor-pointer items-center rounded-full px-4 transition-colors ${
               view === 'table'
                 ? 'bg-paper-100 text-ink-900 shadow-[inset_0_0_0_1px_rgba(17,16,14,0.14)]'
@@ -177,7 +229,7 @@ export function DashboardQueue() {
             Table
           </Link>
           <Link
-            href={buildHref({ view: 'kanban' })}
+            href={buildHref({ view: 'kanban', page: null })}
             className={`inline-flex h-8 cursor-pointer items-center rounded-full px-4 transition-colors ${
               view === 'kanban'
                 ? 'bg-paper-100 text-ink-900 shadow-[inset_0_0_0_1px_rgba(17,16,14,0.14)]'
@@ -191,7 +243,10 @@ export function DashboardQueue() {
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-paper-100/[0.075] bg-paper-100/[0.06] md:grid-cols-6">
         {STATUSES.map((s) => (
-          <div key={s} className="bg-ink-900/95 px-4 py-3 transition-colors hover:bg-ink-850">
+          <div
+            key={s}
+            className="bg-ink-900/95 px-4 py-3 transition-colors hover:bg-ink-850"
+          >
             <div className="flex items-center gap-2">
               <StatusDot status={s} size={6} />
               <span className="font-mono text-2xs uppercase tracking-wider text-paper-500">
@@ -199,7 +254,7 @@ export function DashboardQueue() {
               </span>
             </div>
             <div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-paper-50">
-              {countsByStatus[s] ?? 0}
+              {statsData?.byStatus[s] ?? 0}
             </div>
           </div>
         ))}
@@ -217,12 +272,32 @@ export function DashboardQueue() {
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-paper-500"
             aria-hidden
           >
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <circle
+              cx="11"
+              cy="11"
+              r="7"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M20 20l-3.5-3.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
-          <input name="q" className="input !pl-9" placeholder="Search" defaultValue={q} />
+          <input
+            name="q"
+            className="input !pl-9"
+            placeholder="Search"
+            defaultValue={q}
+          />
         </div>
-        <select name="status" className="select select-sm !w-auto" defaultValue={status}>
+        <select
+          name="status"
+          className="select select-sm !w-auto"
+          defaultValue={status}
+        >
           <option value="">Any status</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -266,7 +341,10 @@ export function DashboardQueue() {
           Apply
         </button>
         {hasFilters && (
-          <Link href="/dashboard" className="btn-ghost btn-sm text-paper-500">
+          <Link
+            href={resetFiltersHref}
+            className="btn-ghost btn-sm text-paper-500"
+          >
             Reset
           </Link>
         )}
@@ -289,21 +367,40 @@ export function DashboardQueue() {
 
       {data && !isLoading && data.items.length === 0 && (
         <DashboardEmptyState
-          variant={hasFilters ? 'filtered' : 'tickets'}
-          title={hasFilters ? 'No tickets match this view' : 'No feedback has arrived yet'}
+          variant={data.total > 0 || hasFilters ? 'filtered' : 'tickets'}
+          title={
+            data.total > 0
+              ? 'No tickets on this page'
+              : hasFilters
+                ? 'No tickets match this view'
+                : 'No feedback has arrived yet'
+          }
           description={
-            hasFilters
-              ? 'This queue is clear for the current filters. Reset the view or adjust the criteria.'
-              : 'Publish a widget on your site to start triaging customer feedback.'
+            data.total > 0
+              ? 'Use the pagination controls to move back into the available queue range.'
+              : hasFilters
+                ? 'This queue is clear for the current filters. Reset the view or adjust the criteria.'
+                : 'Publish a widget on your site to start triaging customer feedback.'
           }
           actions={
             <>
+              {data.total > 0 && (
+                <Link
+                  href={buildHref({ page: Math.min(data.page, totalPages) })}
+                  className="btn-secondary"
+                >
+                  Go to last page
+                </Link>
+              )}
               {hasFilters && (
-                <Link href="/dashboard" className="btn-secondary">
+                <Link href={resetFiltersHref} className="btn-secondary">
                   Reset filters
                 </Link>
               )}
-              <Link href="/dashboard/widgets" className="btn-ghost text-paper-400">
+              <Link
+                href="/dashboard/widgets"
+                className="btn-ghost text-paper-400"
+              >
                 Configure widgets
               </Link>
             </>
@@ -325,12 +422,24 @@ export function DashboardQueue() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="hairline-b bg-paper-100/[0.025] font-mono text-2xs uppercase tracking-wider text-paper-500">
-                      <th className="w-28 px-4 py-2.5 text-left font-normal">When</th>
-                      <th className="px-3 py-2.5 text-left font-normal">From</th>
-                      <th className="w-32 px-3 py-2.5 text-left font-normal">Status</th>
-                      <th className="w-32 px-3 py-2.5 text-left font-normal">Escalation</th>
-                      <th className="w-40 px-3 py-2.5 text-left font-normal">Category</th>
-                      <th className="w-40 px-3 py-2.5 text-left font-normal">Flags</th>
+                      <th className="w-28 px-4 py-2.5 text-left font-normal">
+                        When
+                      </th>
+                      <th className="px-3 py-2.5 text-left font-normal">
+                        From
+                      </th>
+                      <th className="w-32 px-3 py-2.5 text-left font-normal">
+                        Status
+                      </th>
+                      <th className="w-32 px-3 py-2.5 text-left font-normal">
+                        Escalation
+                      </th>
+                      <th className="w-40 px-3 py-2.5 text-left font-normal">
+                        Category
+                      </th>
+                      <th className="w-40 px-3 py-2.5 text-left font-normal">
+                        Flags
+                      </th>
                       <th className="w-16 px-4 py-2.5 text-right font-normal"></th>
                     </tr>
                   </thead>
@@ -366,9 +475,13 @@ export function DashboardQueue() {
                         </td>
                         <td className="px-3 py-3 align-middle">
                           {f.category ? (
-                            <span className="text-xs text-paper-300">{f.category}</span>
+                            <span className="text-xs text-paper-300">
+                              {f.category}
+                            </span>
                           ) : (
-                            <span className="font-mono text-xs text-paper-500">None</span>
+                            <span className="font-mono text-xs text-paper-500">
+                              None
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-3 align-middle">
@@ -379,15 +492,20 @@ export function DashboardQueue() {
                                 style={{
                                   color: '#E7B46A',
                                   background: 'rgba(217,154,61,0.09)',
-                                  boxShadow: 'inset 0 0 0 1px rgba(217,154,61,0.2)',
+                                  boxShadow:
+                                    'inset 0 0 0 1px rgba(217,154,61,0.2)',
                                 }}
                               >
                                 noise
                               </span>
                             )}
-                            {f.knowledgeGap && <span className="pill pill-accent">gap</span>}
+                            {f.knowledgeGap && (
+                              <span className="pill pill-accent">gap</span>
+                            )}
                             {!f.isNoise && !f.knowledgeGap && (
-                              <span className="font-mono text-xs text-paper-500">Clear</span>
+                              <span className="font-mono text-xs text-paper-500">
+                                Clear
+                              </span>
                             )}
                           </div>
                         </td>
@@ -401,8 +519,20 @@ export function DashboardQueue() {
                             className="inline-flex items-center gap-1 text-xs text-paper-400 opacity-100 transition-all hover:text-lime md:opacity-0 md:group-hover:opacity-100"
                           >
                             Open
-                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
-                              <path d="M2.5 6h7M6 2.5L9.5 6 6 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg
+                              width="10"
+                              height="10"
+                              viewBox="0 0 12 12"
+                              fill="none"
+                              aria-hidden
+                            >
+                              <path
+                                d="M2.5 6h7M6 2.5L9.5 6 6 9.5"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
                           </Link>
                         </td>
@@ -411,16 +541,124 @@ export function DashboardQueue() {
                   </tbody>
                 </table>
               </div>
+              {canShowTablePagination && (
+                <TablePagination
+                  page={data.page}
+                  pageSize={data.pageSize}
+                  total={data.total}
+                  totalPages={totalPages}
+                  buildHref={buildHref}
+                  onPageSizeChange={(pageSize) => {
+                    router.push(buildHref({ pageSize, page: null }));
+                  }}
+                />
+              )}
             </div>
           )}
         </>
       )}
+      {data &&
+        !isLoading &&
+        data.items.length === 0 &&
+        canShowTablePagination && (
+          <TablePagination
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            totalPages={totalPages}
+            buildHref={buildHref}
+            onPageSizeChange={(pageSize) => {
+              router.push(buildHref({ pageSize, page: null }));
+            }}
+          />
+        )}
       {previewTicketId && (
         <TicketPreviewDrawer
           ticketId={previewTicketId}
           onClose={() => setPreviewTicketId(null)}
         />
       )}
+    </div>
+  );
+}
+
+function TablePagination({
+  page,
+  pageSize,
+  total,
+  totalPages,
+  buildHref,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  buildHref: (
+    patch: Record<string, string | number | null | undefined>,
+  ) => string;
+  onPageSizeChange: (pageSize: number) => void;
+}) {
+  const displayPage = Math.min(Math.max(page, 1), totalPages);
+  const firstItem = total === 0 ? 0 : (displayPage - 1) * pageSize + 1;
+  const lastItem = Math.min(total, displayPage * pageSize);
+  const previousPage = page > totalPages ? totalPages : Math.max(1, page - 1);
+  const nextPage = Math.min(totalPages, page + 1);
+  const isFirstPage = page <= 1;
+  const isLastPage = page >= totalPages;
+  const pageSizeOptions = TABLE_PAGE_SIZE_OPTIONS.includes(pageSize)
+    ? TABLE_PAGE_SIZE_OPTIONS
+    : [...TABLE_PAGE_SIZE_OPTIONS, pageSize].sort((a, b) => a - b);
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-paper-100/[0.06] px-4 py-3 md:flex-row md:items-center md:justify-between">
+      <p className="font-mono text-xs tabular-nums text-paper-500">
+        Showing {firstItem}-{lastItem} of {total}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 font-mono text-2xs uppercase tracking-wider text-paper-500">
+          Rows
+          <select
+            className="select select-sm !w-auto"
+            value={pageSize}
+            aria-label="Rows per page"
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          >
+            {pageSizeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="px-2 font-mono text-xs tabular-nums text-paper-400">
+          Page {displayPage} of {totalPages}
+        </span>
+        {isFirstPage ? (
+          <span className="btn-secondary btn-sm pointer-events-none opacity-45">
+            Prev
+          </span>
+        ) : (
+          <Link
+            href={buildHref({ page: previousPage })}
+            className="btn-secondary btn-sm"
+          >
+            Prev
+          </Link>
+        )}
+        {isLastPage ? (
+          <span className="btn-secondary btn-sm pointer-events-none opacity-45">
+            Next
+          </span>
+        ) : (
+          <Link
+            href={buildHref({ page: nextPage })}
+            className="btn-secondary btn-sm"
+          >
+            Next
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
